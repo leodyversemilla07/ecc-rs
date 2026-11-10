@@ -519,6 +519,20 @@ select:focus-visible,
 .log-step.future { opacity: .38; }
 .log-step.done { opacity: .72; }
 
+/* By default the whole route is readable, with the current step picked out.
+   `log--reveal` hides the steps that have not been reached yet, so the
+   walkthrough unfolds one step at a time as the reader advances. */
+.log--reveal .log-step.future { display: none; }
+.log--reveal .log-step.done { opacity: 1; }
+
+/* A step that has just come into view. */
+@keyframes step-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: none; }
+}
+
+.log--reveal .log-step.incoming { animation: step-in .2s ease-out; }
+
 .lines { display: grid; gap: 4px; }
 
 .ln {

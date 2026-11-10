@@ -104,7 +104,7 @@
           <button class="chip" data-stage="sign" aria-pressed="false">2 · sign</button>
           <button class="chip" data-stage="verify" aria-pressed="false">3 · verify</button>
         </div>
-        <div class="log" id="steps"></div>
+        <div class="log log--reveal" id="steps"></div>
         <div class="stepper">
           <button class="chip" id="prev" type="button">← prev</button>
           <button class="chip" id="next" type="button">next →</button>
@@ -268,6 +268,9 @@
   };
 
   const ctx = () => (state.curveKey === 'small' ? ECDSA.smallCurve() : ECDSA.secp256k1());
+
+  /** The step index that was on screen last, so the new one can animate in. */
+  let revealedStep = -1;
 
   function fmt(x) {
     if (x === null || x === undefined) return '—';
@@ -684,7 +687,10 @@
     $('#progress').textContent = `step ${state.step + 1} of ${steps.length}`;
     $('#steps').innerHTML = steps.map((st, i) => {
       const cls = i === state.step ? 'current' : i < state.step ? 'done' : 'future';
-      return `<div class="log-step ${cls}">
+      // The step that has just come into view gets a short entrance animation.
+      const incoming = i === state.step && i !== revealedStep ? ' incoming' : '';
+      if (i === state.step) revealedStep = i;
+      return `<div class="log-step ${cls}${incoming}">
         <h3>${String(i + 1).padStart(2, '0')} · ${st.title}</h3>
         <div class="lines">${st.lines.map((l) => `<div class="ln ${l.tone}">${l.s}</div>`).join('')}</div>
       </div>`;
