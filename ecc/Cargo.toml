@@ -1,0 +1,9 @@
+[package]
+name = "ecc"
+description = "Elliptic curve cryptography library built from scratch (finite fields, point arithmetic, double-and-add)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+num-bigint = "0.4"

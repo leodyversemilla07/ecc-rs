@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ECDSA — ecc-rs visualizers</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◈</text></svg>">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand"><b>ECC-RS</b></div>
+  <nav class="crumbs"><a href="index.html">visualizers</a> / <em>ECDSA</em></nav>
+  <button class="chip ghost theme-btn" id="theme" type="button">theme</button>
+</header>
+
+<section class="title">
+  <p class="kicker">ecdsa/src/lib.rs</p>
+  <h1>ECDSA</h1>
+  <p class="lead">
+    The Elliptic Curve Digital Signature Algorithm, built on the <code>ecc</code> library. Three
+    stages — key generation, signing, verification — each computed exactly the way
+    <code>Ecdsa</code> in the <code>ecdsa</code> crate computes it.
+  </p>
+</section>
+
+<div class="frame">
+  <!-- ── control rail ──────────────────────────────────────────────── -->
+  <aside class="rail">
+    <section class="rail-group">
+      <h2>curve</h2>
+      <div class="chips">
+        <button class="chip" data-curve="small" aria-pressed="true">teaching</button>
+        <button class="chip" data-curve="secp" aria-pressed="false">secp256k1</button>
+      </div>
+      <span class="hint" id="curvehint"></span>
+    </section>
+
+    <section class="rail-group">
+      <h2>message</h2>
+      <label class="fld">
+        <span>M</span>
+        <input id="msg" type="text" autocomplete="off" value="Alice sends 1 BTC to Bob">
+        <span class="hint" id="msghint"></span>
+      </label>
+    </section>
+
+    <section class="rail-group">
+      <h2>keys</h2>
+      <label class="fld">
+        <span>private key d</span>
+        <input id="din" type="number" min="1" step="1" value="7">
+        <span class="hint" id="dhint"></span>
+      </label>
+      <label class="fld">
+        <span>nonce k</span>
+        <input id="kin" type="number" min="1" step="1" value="2">
+        <span class="hint" id="khint"></span>
+      </label>
+      <label class="fld">
+        <span>signature (r, s)</span>
+        <input id="sin" type="text" autocomplete="off" value="—" readonly>
+        <span class="hint" id="shint">produced by <code>Ecdsa::sign</code></span>
+      </label>
+    </section>
+
+    <section class="rail-group">
+      <h2>actions</h2>
+      <div class="chips">
+        <button class="chip" data-act="rand-d">random d</button>
+        <button class="chip" data-act="rand-k">random k</button>
+        <button class="chip" data-act="sign">sign</button>
+        <button class="chip" data-act="verify">verify</button>
+        <button class="chip" data-act="tamper-msg">tamper msg</button>
+        <button class="chip" data-act="tamper-sig">tamper sig</button>
+        <button class="chip" data-act="reuse">reuse k</button>
+      </div>
+    </section>
+
+    <div class="err" id="err" role="alert"></div>
+  </aside>
+
+  <!-- ── canvas ───────────────────────────────────────────────────── -->
+  <main class="canvas">
+
+    <div class="readout">
+      <div class="expr" id="eq"></div>
+      <div class="src" id="src"></div>
+    </div>
+    <div id="msgbox"></div>
+
+    <div class="split">
+      <section class="panel figure">
+        <div class="panel-h"><span id="curveTitle">the teaching curve</span><span class="note" id="pointCount"></span></div>
+        <svg id="grid" viewBox="0 0 460 460" role="img" aria-label="Points on the curve used in the signature"></svg>
+        <div class="legend" id="legend"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h"><span>stage</span><span class="note" id="progress"></span></div>
+        <div class="chips" style="margin-bottom:12px">
+          <button class="chip" data-stage="key" aria-pressed="true">1 · key generation</button>
+          <button class="chip" data-stage="sign" aria-pressed="false">2 · sign</button>
+          <button class="chip" data-stage="verify" aria-pressed="false">3 · verify</button>
+        </div>
+        <div class="log" id="steps"></div>
+        <div class="stepper">
+          <button class="chip" id="prev" type="button">← prev</button>
+          <button class="chip" id="next" type="button">next →</button>
+          <input id="range" type="range" min="0" max="1" value="0" aria-label="Walkthrough step">
+          <button class="chip" id="play" type="button">play</button>
+          <span class="count" id="count"></span>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-h"><span>the three stages</span></div>
+      <div class="grid-3">
+        <div>
+          <h3>1 · key generation</h3>
+          <div class="readout" style="border-left-color:var(--cyan);margin-bottom:8px"><div class="expr">Q = d·G</div></div>
+          <p class="cap">Alice picks a private key <code>d</code> with 1 ≤ d ≤ n−1 and computes the
+          public key <code>Q = dG</code>. Anyone can compute <code>Q</code>; nobody can recover
+          <code>d</code> — that is the discrete logarithm problem.</p>
+        </div>
+        <div>
+          <h3>2 · signing</h3>
+          <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px"><div class="expr">r = x(kG) mod n<br>s = k⁻¹(H(M) + r·d) mod n</div></div>
+          <p class="cap">A fresh random nonce <code>k</code> gives the random point <code>R = kG</code>;
+          its x-coordinate becomes <code>r</code>. The signature is the pair <code>(r, s)</code>.</p>
+        </div>
+        <div>
+          <h3>3 · verification</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px"><div class="expr">P = u₁G + u₂Q<br>x(P) ≡ r (mod n)</div></div>
+          <p class="cap">The verifier rebuilds a point from public data only and compares its
+          x-coordinate with <code>r</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>why verification works</span><span class="note">the proof from lesson 29</span></div>
+      <ol class="cap" style="margin:0;padding-left:1.3rem;line-height:1.9">
+        <li>We know from the signing step that <code>s = k⁻¹(H(M) + r d) mod n</code>.</li>
+        <li>In verification we do not know <code>d</code> or <code>k</code> — only <code>s</code>,
+        <code>r</code>, <code>H(M)</code> and <code>Q</code>.</li>
+        <li>Multiply both sides by <code>k</code>: <code>k s = H(M) + r d mod n</code>.</li>
+        <li>Multiply by <code>s⁻¹</code>: <code>k = s⁻¹ H(M) + s⁻¹ r d mod n</code>.</li>
+        <li>Using the definitions of <code>u₁</code> and <code>u₂</code>: <code>k = u₁ + u₂ d mod n</code>.</li>
+        <li>Multiply both sides by the generator <code>G</code>: <code>kG = u₁G + u₂ dG</code>.</li>
+        <li>Since <code>Q = dG</code>, this becomes <code>kG = u₁G + u₂Q</code>.</li>
+        <li>The left side is <code>R = kG</code>. The right side is <code>P = u₁G + u₂Q</code>.
+        Therefore <b>P = R</b>.</li>
+        <li>Both points are the same, so their x-coordinates are the same:
+        <code>x(P) = x(R) ≡ r (mod n)</code>.</li>
+      </ol>
+      <p class="cap" style="margin-top:10px">We only compare the x-coordinate because <code>r</code> is
+      derived from the x-coordinate of <code>R</code>. The signature does not carry <code>y(R)</code>,
+      and it does not need to.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>the nonce must never repeat</span></div>
+      <p class="cap">Sign two messages <code>M₁</code> and <code>M₂</code> with the same <code>k</code>
+      and the same private key <code>d</code>, and <code>r</code> is the same for both. Subtracting the
+      two signing equations gives:</p>
+      <div class="readout" style="border-left-color:var(--bad);margin:12px 0">
+        <div class="expr">s₁ − s₂ = k⁻¹(H₁ − H₂)<span class="op">⇒</span>k = (H₁ − H₂)·(s₁ − s₂)⁻¹</div>
+      </div>
+      <p class="cap">and then <code>d = r⁻¹(s₁ k − H₁) mod n</code> — the private key is gone. This is
+      how the PlayStation 3 was broken in 2010.</p>
+      <div id="reuse-out" style="margin-top:12px"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>rust source</span><span class="note">ecdsa/src/lib.rs</span></div>
+      <div class="listing" id="rs"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>the scalar multiplications</span><span class="note">each is a double-and-add ladder</span></div>
+      <p class="cap">Key generation, signing and verification all reduce to
+      <code>EllipticCurve::multiply</code>. Each row is one bit of the scalar:
+      <code>t = double(t)</code>, and <code>t = add(t, G)</code> when the bit is 1.</p>
+      <div class="tw" id="ladder-table" style="margin-top:10px"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>notes</span></div>
+      <div class="grid-2">
+        <div>
+          <h3>sign() takes the nonce from the caller</h3>
+          <p class="cap"><code>Ecdsa::sign</code> does not generate <code>k</code>. Standard ECDSA
+          requires a fresh nonce whenever <code>r = 0</code> or <code>s = 0</code>; the CLI in
+          <code>ecdsa/src/main.rs</code> retries in a loop.</p>
+        </div>
+        <div>
+          <h3>the order must be prime</h3>
+          <p class="cap"><code>FiniteField::inverse_mul</code> uses Fermat's little theorem, so the
+          group order <code>n</code> has to be prime. The teaching curve uses 19.</p>
+        </div>
+        <div>
+          <h3>the hash is reduced, not truncated</h3>
+          <p class="cap"><code>generate_hash_less_than</code> takes the SHA-256 digest modulo
+          <code>n − 1</code> and adds one, so the hash always lands in 1 … n−1.</p>
+        </div>
+        <div>
+          <h3>verification is not free</h3>
+          <p class="cap">Verifying needs two scalar multiplications — <code>u₁G</code> and
+          <code>u₂Q</code>. For secp256k1 that is the dominant cost of a signature check.</p>
+        </div>
+        <div>
+          <h3>a small curve can make verify panic</h3>
+          <p class="cap"><code>Ecdsa::verify</code> calls <code>EllipticCurve::add</code>, which
+          asserts the two points differ. On a curve with 19 points <code>u₁·G</code> and
+          <code>u₂·Q</code> sometimes land on the same point. Press <b>random k</b> a few times to
+          see it.</p>
+        </div>
+        <div>
+          <h3>the hash is computed here</h3>
+          <p class="cap">SHA-256 is implemented in plain JavaScript in
+          <code>visualizers/assets/ecc.js</code>, so the page works offline and over
+          <code>file://</code> without the Web Crypto API.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>ecc-rs</span>
+  <a href="index.html">← visualizers</a>
+  <a href="point-arithmetic.html">elliptic curve ←</a>
+  <a href="https://github.com/leodyversemilla07/ecc-rs">source</a>
+</footer>
+
+<script src="assets/rust-source.js"></script>
+<script src="assets/ecc.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const {
+    ec, traceMultiply, rsView, mod, modPow, pt, ptText, IDENTITY, ecdsa: ECDSA,
+  } = ECC;
+
+  const $ = (s) => document.querySelector(s);
+
+  const state = {
+    curveKey: 'small',
+    stage: 'key',
+    step: 0,
+    timer: null,
+    message: 'Alice sends 1 BTC to Bob',
+    d: 7n,
+    k: 2n,
+    hash: null,
+    signature: null,
+    publicKey: null,
+    signSteps: [],
+    verifySteps: [],
+    keySteps: [],
+    verifyResult: null,
+    verifyPanic: null,
+  };
+
+  const ctx = () => (state.curveKey === 'small' ? ECDSA.smallCurve() : ECDSA.secp256k1());
+
+  function fmt(x) {
+    if (x === null || x === undefined) return '—';
+    if (x < 1000000n) return x.toString();
+    return `0x${x.toString(16)}`;
+  }
+
+  function fmtPoint(q) {
+    return q === IDENTITY ? 'Identity (∞)' : `(${fmt(q.x)}, ${fmt(q.y)})`;
+  }
+
+  function showError(msg) { $('#err').textContent = msg || ''; }
+
+  /* ── stages ───────────────────────────────────────────────────────── */
+
+  function buildKeySteps() {
+    const c = ctx();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+
+    push('the curve parameters', [
+      line('code', 'pub fn small_curve() -> Ecdsa { … }'),
+      line('calc', `a = ${c.curve.a}, b = ${c.curve.b}, p = ${c.curve.p}`),
+      line('calc', `generator G = ${fmtPoint(c.generator)}`),
+      line('calc', `order n = ${fmt(c.order)}`),
+      line('dim', 'the order is the number of elements in the group; it must be prime so that the modular inverse exists'),
+    ]);
+
+    push('generate_private_key', [
+      line('code', 'pub fn generate_private_key(&self) -> BigUint { self.generate_random_positive(&self.order) }'),
+      line('calc', `a random number in 1 … n−1. Here we use d = ${state.d}`),
+      line('dim', `d < n → ${state.d} < ${fmt(c.order)} ✓`),
+    ]);
+
+    push('generate_public_key — Q = d·G', [
+      line('code', 'pub fn generate_public_key(&self, private_key: &BigUint) -> Point { self.curve.multiply(private_key, &self.generator) }'),
+      line('calc', `Q = ${fmt(state.d)} · G = ${fmtPoint(state.publicKey)}`),
+      line('dim', 'the same double-and-add ladder as the point arithmetic page'),
+    ]);
+
+    push('why nobody can recover d', [
+      line('dim', 'Q = dG is a one-way function: computing Q from d is easy, recovering d from Q is the discrete logarithm problem'),
+      line('dim', 'for the teaching curve the group has only 19 elements, so brute force is trivial — that is exactly why it is only a teaching curve'),
+    ]);
+
+    return steps;
+  }
+
+  function buildSignSteps() {
+    const c = ctx();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+    const h = state.hash;
+
+    push('the message becomes a number', [
+      line('code', 'let hash = Ecdsa::generate_hash_less_than(&message, &self.order);'),
+      line('calc', `SHA-256("${state.message}") = ${ECC.bytesToHex(ECC.sha256(state.message))}`),
+      line('calc', `that 256-bit number mod (n − 1) = ${fmt(c.order - 1n)}, then + 1`),
+      line('ok', `H(M) = ${fmt(h)}`),
+      line('dim', 'the result always lands in 1 … n−1, so the assert!(hash < order) can never fire'),
+    ]);
+
+    push('the nonce', [
+      line('code', 'let k = self.generate_random_positive(&self.order);'),
+      line('calc', `k = ${fmt(state.k)}`),
+      line('dim', 'a fresh nonce for every signature — reusing it would reveal the private key'),
+    ]);
+
+    push('R = k·G', [
+      line('code', 'let random_point = self.curve.multiply(k, &self.generator);'),
+      line('calc', `R = ${fmtPoint(state.signature.R)}`),
+      line('dim', 'double-and-add, exactly the ladder below'),
+    ]);
+
+    push('r = x(R) mod n', [
+      line('code', 'Point::Coordinate(x, _) => x % &self.order'),
+      line('calc', `x(R) = ${fmt(state.signature.R.x)}`),
+      line('ok', `r = ${fmt(state.signature.r)}`),
+    ]);
+
+    push('s = k⁻¹ (H(M) + r·d) mod n', [
+      line('code', 'let d_times_r = FiniteField::mul(private_key, &r, &self.order);'),
+      line('code', 'let hash_plus_d_times_r = FiniteField::add(hash, &d_times_r, &self.order);'),
+      line('code', 'let k_inverse = FiniteField::inverse_mul(k, &self.order);'),
+      line('code', 'let s = FiniteField::mul(&hash_plus_d_times_r, &k_inverse, &self.order);'),
+      line('calc', `d·r mod n = ${fmt(mod(state.d * state.signature.r, c.order))}`),
+      line('calc', `H(M) + d·r mod n = ${fmt(mod(h + state.d * state.signature.r, c.order))}`),
+      line('calc', `k⁻¹ = k^(n−2) mod n = ${fmt(modPow(state.k, c.order - 2n, c.order))}`),
+      line('ok', `s = ${fmt(state.signature.s)}`),
+    ]);
+
+    push('the signature', [
+      line('code', '(r, s)'),
+      line('ok', `signature = (${fmt(state.signature.r)}, ${fmt(state.signature.s)})`),
+      line('dim', 'if r = 0 or s = 0 the caller must pick a new k and try again'),
+    ]);
+
+    return steps;
+  }
+
+  function buildVerifySteps() {
+    const c = ctx();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+
+    if (!state.signature || !state.verifyResult) {
+      push('nothing to verify', [line('dim', 'press "sign" first')]);
+      return steps;
+    }
+
+    const v = state.verifyResult;
+    const r = state.signature.r;
+    const s = state.signature.s;
+
+    push('the inputs are all public', [
+      line('calc', `H(M) = ${fmt(state.hash)}`),
+      line('calc', `Q = ${fmtPoint(state.publicKey)}   (the public key)`),
+      line('calc', `(r, s) = (${fmt(r)}, ${fmt(s)})   (the signature)`),
+      line('dim', 'the verifier never sees d or k'),
+    ]);
+
+    push('w = s⁻¹ mod n', [
+      line('code', 'let s_inverse = FiniteField::inverse_mul(s, &self.order);'),
+      line('calc', `w = ${fmt(v.sInv)}`),
+    ]);
+
+    push('u₁ = H(M)·w mod n', [
+      line('code', 'let u1 = FiniteField::mul(hash, &s_inverse, &self.order);'),
+      line('calc', `u₁ = ${fmt(v.u1)}`),
+    ]);
+
+    push('u₂ = r·w mod n', [
+      line('code', 'let u2 = FiniteField::mul(r, &s_inverse, &self.order);'),
+      line('calc', `u₂ = ${fmt(v.u2)}`),
+    ]);
+
+    push('u₁·G', [
+      line('code', 'let u1_generator = self.curve.multiply(&u1, &self.generator);'),
+      line('calc', `u₁G = ${fmtPoint(v.u1G)}`),
+    ]);
+
+    push('u₂·Q', [
+      line('code', 'let u2_public_key = self.curve.multiply(&u2, public_key);'),
+      line('calc', `u₂Q = ${fmtPoint(v.u2Q)}`),
+    ]);
+
+    push('P = u₁G + u₂Q', [
+      line('code', 'let p = self.curve.add(&u1_generator, &u2_public_key);'),
+      line('calc', `P = ${fmtPoint(v.P)}`),
+      line('dim', 'this is the point R = kG that Alice computed during signing — the verifier rebuilds it from public data only'),
+    ]);
+
+    push('the verdict', [
+      line('code', 'match p { Point::Coordinate(x, _) => (x % &self.order) == *r, Point::Identity => false }'),
+      v.P === IDENTITY
+        ? line('bad', 'P is the identity, so there is no x-coordinate — verification returns false')
+        : line(v.valid ? 'ok' : 'bad', `x(P) mod n = ${fmt(v.P.x % c.order)}  vs  r = ${fmt(r)}  →  ${v.valid ? 'VALID ✓' : 'INVALID ✗'}`),
+    ]);
+
+    return steps;
+  }
+
+  /**
+   * `Ecdsa::verify` calls `EllipticCurve::add`, which asserts that the two
+   * points differ. On the teaching curve u₁·G and u₂·Q sometimes land on the
+   * same point, and the crate panics instead of returning false.
+   */
+  function buildPanicSteps(message) {
+    const c = ctx();
+    const line = (tone, s) => ({ tone, s });
+    return [{
+      title: 'the verification step panicked',
+      lines: [
+        line('code', 'let p = self.curve.add(&u1_generator, &u2_public_key);'),
+        line('bad', `assert! failed: ${message}`),
+        line('dim', `on ${c.name} the group has only ${c.isReal ? '19' : 'a huge number of'} elements, so u₁·G and u₂·Q sometimes land on the very same point`),
+        line('dim', '`EllipticCurve::add` refuses to add a point to itself, and `Ecdsa::verify` does not guard against it — the Rust program panics instead of returning false'),
+        line('dim', 'pick another nonce k and try again'),
+      ],
+    }];
+  }
+
+  /* ── actions ──────────────────────────────────────────────────────── */
+
+  function doSign() {
+    const c = ctx();
+    try {
+      const res = ECDSA.sign(c, state.hash, state.d, state.k);
+      state.signature = { r: res.r, s: res.s, R: res.R };
+      state.signSteps = buildSignSteps();
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      state.verifySteps = [];
+      $('#sin').value = `${res.r}, ${res.s}`;
+      $('#shint').textContent = `r = ${fmt(res.r)}, s = ${fmt(res.s)}`;
+      showError('');
+      state.stage = 'sign';
+      state.step = 0;
+      render();
+      return true;
+    } catch (err) {
+      showError(err.message || String(err));
+      return false;
+    }
+  }
+
+  function doVerify() {
+    const c = ctx();
+    if (!state.signature) { showError('Sign first.'); return; }
+    try {
+      const v = ECDSA.verify(c, state.hash, state.publicKey, [state.signature.r, state.signature.s]);
+      state.verifyResult = v;
+      state.verifyPanic = null;
+      state.verifySteps = buildVerifySteps();
+      showError('');
+    } catch (err) {
+      state.verifyResult = null;
+      state.verifyPanic = err.message || String(err);
+      state.verifySteps = buildPanicSteps(state.verifyPanic);
+      showError(state.verifyPanic);
+    }
+    state.stage = 'verify';
+    state.step = 0;
+    render();
+  }
+
+  function recomputeAll() {
+    const c = ctx();
+    const digest = ECC.sha256(state.message);
+    state.hash = ECDSA.generateHashLessThan(state.message, c.order);
+    try {
+      state.publicKey = ECDSA.publicKey(c, state.d);
+    } catch (err) {
+      state.publicKey = null;
+    }
+    state.keySteps = buildKeySteps();
+    if (state.signature) {
+      state.signSteps = buildSignSteps();
+      try {
+        state.verifyResult = ECDSA.verify(c, state.hash, state.publicKey, [state.signature.r, state.signature.s]);
+        state.verifyPanic = null;
+        state.verifySteps = buildVerifySteps();
+      } catch (err) {
+        state.verifyResult = null;
+        state.verifyPanic = err.message || String(err);
+        state.verifySteps = buildPanicSteps(state.verifyPanic);
+      }
+    }
+    void digest;
+  }
+
+  /* ── grid ─────────────────────────────────────────────────────────── */
+
+  function renderGrid() {
+    const c = ctx();
+    if (!c.isReal) {
+      $('#grid').innerHTML = '<text x="230" y="215" text-anchor="middle" class="g-text" style="font-size:12px">secp256k1 has no small grid to draw —</text>'
+        + '<text x="230" y="236" text-anchor="middle" class="g-text" style="font-size:12px">its field has 2²⁵⁶ elements.</text>';
+      return;
+    }
+
+    const p = Number(c.curve.p);
+    const W = 460;
+    const pad = 34;
+    const size = W - pad * 2;
+    const step = size / (p - 1);
+    const X = (x) => pad + Number(x) * step;
+    const Y = (y) => pad + (p - 1 - Number(y)) * step;
+
+    let s = '';
+    for (let i = 0; i < p; i += 1) {
+      s += `<line x1="${X(i)}" y1="${pad}" x2="${X(i)}" y2="${pad + size}" class="g-line"/>`;
+      s += `<line x1="${pad}" y1="${Y(i)}" x2="${pad + size}" y2="${Y(i)}" class="g-line"/>`;
+    }
+    s += `<rect x="${pad}" y="${pad}" width="${size}" height="${size}" fill="none" class="g-axis"/>`;
+
+    const ticks = new Set([0, p - 1]);
+    for (let i = 1; i < p - 1; i += 1) ticks.add(i);
+    for (const t of ticks) {
+      s += `<text x="${X(t)}" y="${pad + size + 16}" text-anchor="middle" class="g-text">${t}</text>`;
+      s += `<text x="${pad - 8}" y="${Y(t) + 4}" text-anchor="end" class="g-text">${t}</text>`;
+    }
+    s += `<text x="${pad + size}" y="${pad - 11}" text-anchor="end" class="g-text">x →</text>`;
+    s += `<text x="${pad - 8}" y="${pad - 11}" text-anchor="start" class="g-text">y →</text>`;
+
+    const points = ec.enumerate(c.curve);
+    const dotR = Math.max(2, Math.min(4, (step * 0.2)));
+    for (const q of points) s += `<circle cx="${X(q.x)}" cy="${Y(q.y)}" r="${dotR}" class="g-dot"/>`;
+
+    const mr = Math.max(5.5, Math.min(9, (step * 0.34)));
+    const marks = [];
+    const add = (q, label, color, cls) => {
+      if (!q || q === IDENTITY) return;
+      marks.push({ q, label, color, cls });
+    };
+
+    add(c.generator, 'G', 'var(--accent)', 'g');
+    add(state.publicKey, 'Q', 'var(--cyan)', 'p');
+    if (state.signature) add(state.signature.R, 'R', 'var(--rose)', 'q');
+    if (state.verifyResult) {
+      add(state.verifyResult.u1G, 'u₁G', 'var(--rose)', 'u1');
+      add(state.verifyResult.u2Q, 'u₂Q', 'var(--cyan)', 'u2');
+      add(state.verifyResult.P, 'P', 'var(--good)', 'r');
+    }
+
+    const placed = [];
+    for (const m of marks) {
+      let dx = mr + 6;
+      let dy = -mr - 3;
+      while (placed.some((o) => Math.abs(o.x - X(m.q.x)) < 24 && Math.abs(o.y - (Y(m.q.y) + dy)) < 13)) {
+        dy += 13;
+        if (dy > mr + 20) { dy = -mr - 3; dx += 16; }
+      }
+      placed.push({ x: X(m.q.x), y: Y(m.q.y) + dy });
+      s += `<circle cx="${X(m.q.x)}" cy="${Y(m.q.y)}" r="${mr}" class="mk ${m.cls}"/>`;
+      s += `<text x="${X(m.q.x) + dx}" y="${Y(m.q.y) + dy}" class="mk-label ${m.cls}">${m.label}</text>`;
+    }
+
+    $('#grid').innerHTML = s;
+    $('#pointCount').textContent = `${points.length} affine points`;
+  }
+
+  function renderLegend() {
+    const items = [
+      '<span><i class="swatch g"></i> G (generator)</span>',
+      '<span><i class="swatch p"></i> Q = dG (public key)</span>',
+    ];
+    if (state.signature) items.push('<span><i class="swatch q"></i> R = kG</span>');
+    if (state.verifyResult) {
+      items.push('<span><i class="swatch q"></i> u₁G</span>');
+      items.push('<span><i class="swatch p"></i> u₂Q</span>');
+      items.push('<span><i class="swatch r"></i> P = u₁G + u₂Q</span>');
+    }
+    $('#legend').innerHTML = items.join('');
+  }
+
+  /* ── render ───────────────────────────────────────────────────────── */
+
+  function renderMsgBox() {
+    const box = $('#msgbox');
+    if (state.verifyPanic) {
+      box.innerHTML = `<div class="status bad" style="margin-bottom:0"><div><b>The program panicked ✗</b> ${state.verifyPanic}. <code>Ecdsa::verify</code> calls <code>EllipticCurve::add</code>, which refuses to add a point to itself — on a curve this small u₁·G and u₂·Q sometimes coincide. Try another nonce k.</div></div>`;
+      return;
+    }
+    if (state.verifyResult) {
+      box.innerHTML = state.verifyResult.valid
+        ? '<div class="status good" style="margin-bottom:0"><div><b>Valid signature ✓</b> The verifier rebuilt P = u₁G + u₂Q and found x(P) ≡ r (mod n).</div></div>'
+        : '<div class="status bad" style="margin-bottom:0"><div><b>Invalid signature ✗</b> x(P) mod n ≠ r. The message, the signature or the public key was tampered with.</div></div>';
+      return;
+    }
+    if (state.signature) {
+      box.innerHTML = `<div class="status info" style="margin-bottom:0"><div><b>Signed.</b> (r, s) = (${fmt(state.signature.r)}, ${fmt(state.signature.s)}) — press <b>verify</b> to check it.</div></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="status info" style="margin-bottom:0"><div><b>Not signed yet.</b> The public key is already computed: Q = ${fmtPoint(state.publicKey)}.</div></div>`;
+  }
+
+  function renderLadderTable() {
+    const c = ctx();
+    const maxSteps = c.isReal ? 40 : 12;
+    const rows = [];
+    const push = (title, scalar, base) => {
+      rows.push({ title, scalar, trace: traceMultiply(c.curve, scalar, base, { maxSteps }) });
+    };
+
+    push('Q = d·G', state.d, c.generator);
+    if (state.signature) push('R = k·G', state.k, c.generator);
+
+    let h = '';
+    for (const row of rows) {
+      const bits = row.scalar.toString(2);
+      h += `<h3>${row.title} — ${row.scalar}${bits.length > 40 ? ` (${bits.length}-bit scalar)` : ` = ${bits}₂`}</h3>`;
+      h += '<table class="data"><tr><th>#</th><th>step</th><th>t after the step</th><th>on the curve</th></tr>';
+      row.trace.ladder.forEach((l, i) => {
+        const on = l.point === IDENTITY ? 'identity' : (ec.onCurve(c.curve, l.point) ? 'yes' : 'no');
+        h += `<tr><td>${i}</td><td>${l.label}</td><td>${fmtPoint(l.point)}</td><td class="${on === 'yes' ? 'pass' : 'dim'}">${on}</td></tr>`;
+      });
+      h += '</table>';
+    }
+    $('#ladder-table').innerHTML = h;
+  }
+
+  function render() {
+    const c = ctx();
+
+    document.querySelectorAll('[data-curve]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.curve === state.curveKey));
+    });
+    document.querySelectorAll('[data-stage]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.stage === state.stage));
+    });
+
+    $('#curvehint').textContent = c.isReal ? 'y² = x³ + 2x + 2 (mod 17)' : 'y² = x³ + 7';
+    $('#dhint').textContent = `1 ≤ d ≤ n−1 = ${fmt(c.order - 1n)}`;
+    $('#khint').textContent = `1 ≤ k ≤ n−1 = ${fmt(c.order - 1n)}`;
+    $('#msghint').textContent = `SHA-256 → ${ECC.bytesToHex(ECC.sha256(state.message)).slice(0, 26)}…`;
+    $('#curveTitle').textContent = c.isReal ? 'the teaching curve' : 'secp256k1';
+
+    recomputeAll();
+
+    const steps = state.stage === 'key' ? state.keySteps : state.stage === 'sign' ? state.signSteps : state.verifySteps;
+    const eqs = {
+      key: 'Q<span class="op">=</span>d·G',
+      sign: 'r<span class="op">=</span>x(kG) mod n<span class="op">·</span>s<span class="op">=</span>k⁻¹(H(M) + r·d) mod n',
+      verify: 'P<span class="op">=</span>u₁G + u₂Q<span class="op">·</span>valid ⇔ x(P) ≡ r',
+    };
+    $('#eq').innerHTML = eqs[state.stage];
+    $('#src').textContent = `ecdsa/src/lib.rs · ${state.stage}`;
+
+    state.step = Math.max(0, Math.min(state.step, steps.length - 1));
+    $('#progress').textContent = `step ${state.step + 1} of ${steps.length}`;
+    $('#steps').innerHTML = steps.map((st, i) => {
+      const cls = i === state.step ? 'current' : i < state.step ? 'done' : 'future';
+      return `<div class="log-step ${cls}">
+        <h3>${String(i + 1).padStart(2, '0')} · ${st.title}</h3>
+        <div class="lines">${st.lines.map((l) => `<div class="ln ${l.tone}">${l.s}</div>`).join('')}</div>
+      </div>`;
+    }).join('');
+
+    $('#range').max = String(steps.length - 1);
+    $('#range').value = String(state.step);
+    $('#count').textContent = `${state.step + 1} / ${steps.length}`;
+    $('#prev').disabled = state.step === 0;
+    $('#next').disabled = state.step >= steps.length - 1;
+    $('#play').textContent = state.timer ? 'pause' : 'play';
+
+    const regions = { key: 'generate_key_pair', sign: 'sign', verify: 'verify' };
+    $('#rs').innerHTML = rsView.html('ecdsa/src/lib.rs', regions[state.stage]);
+    rsView.reveal('ecdsa/src/lib.rs', regions[state.stage]);
+
+    renderGrid();
+    renderLegend();
+    renderMsgBox();
+    renderLadderTable();
+  }
+
+  /* ── playback ─────────────────────────────────────────────────────── */
+
+  function stopPlay() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    const b = $('#play');
+    if (b) b.textContent = 'play';
+  }
+
+  function togglePlay() {
+    if (state.timer) { stopPlay(); render(); return; }
+    const steps = state.stage === 'key' ? state.keySteps : state.stage === 'sign' ? state.signSteps : state.verifySteps;
+    if (state.step >= steps.length - 1) state.step = 0;
+    state.timer = setInterval(() => {
+      if (state.step < steps.length - 1) {
+        state.step += 1;
+        render();
+      } else {
+        stopPlay();
+        render();
+      }
+    }, 1100);
+    render();
+  }
+
+  /* ── events ───────────────────────────────────────────────────────── */
+
+  document.querySelectorAll('[data-curve]').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.curveKey = b.dataset.curve;
+      const c = ctx();
+      state.d = mod(state.d, c.order) || 1n;
+      state.k = mod(state.k, c.order) || 1n;
+      $('#din').value = String(state.d);
+      $('#kin').value = String(state.k);
+      state.signature = null;
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      state.signSteps = [];
+      state.verifySteps = [];
+      state.stage = 'key';
+      state.step = 0;
+      showError('');
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-stage]').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.stage = b.dataset.stage;
+      state.step = 0;
+      stopPlay();
+      render();
+    });
+  });
+
+  $('#msg').addEventListener('input', (e) => {
+    state.message = e.target.value;
+    state.verifyResult = null;
+    state.verifyPanic = null;
+    state.verifySteps = [];
+    render();
+  });
+
+  $('#din').addEventListener('input', (e) => {
+    const v = e.target.value.trim();
+    if (!/^\d+$/.test(v)) return;
+    state.d = BigInt(v);
+    state.signature = null;
+    state.verifyResult = null;
+    state.verifyPanic = null;
+    state.signSteps = [];
+    render();
+  });
+
+  $('#kin').addEventListener('input', (e) => {
+    const v = e.target.value.trim();
+    if (!/^\d+$/.test(v)) return;
+    state.k = BigInt(v);
+    render();
+  });
+
+  const randomBelow = (n) => {
+    const bytes = new Uint8Array(32);
+    if (globalThis.crypto && globalThis.crypto.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+    else bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+    let v = BigInt(`0x${ECC.bytesToHex(bytes)}`) % n;
+    if (v === 0n) v = 1n;
+    return v;
+  };
+
+  document.addEventListener('click', (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+
+    if (act === 'rand-d') {
+      state.d = randomBelow(ctx().order);
+      $('#din').value = String(state.d);
+      state.signature = null;
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      state.signSteps = [];
+      render();
+      return;
+    }
+    if (act === 'rand-k') {
+      state.k = randomBelow(ctx().order);
+      $('#kin').value = String(state.k);
+      render();
+      return;
+    }
+    if (act === 'sign') { doSign(); return; }
+    if (act === 'verify') { doVerify(); return; }
+
+    if (act === 'tamper-msg') {
+      $('#msg').value = `${state.message} (tampered)`;
+      state.message = $('#msg').value;
+      recomputeAll();
+      state.stage = 'verify';
+      state.step = 0;
+      render();
+      return;
+    }
+
+    if (act === 'tamper-sig') {
+      if (!state.signature) { showError('Sign first.'); return; }
+      const c = ctx();
+      const r = mod(state.signature.r + 1n, c.order);
+      state.signature = { ...state.signature, r };
+      $('#sin').value = `${r}, ${state.signature.s}`;
+      $('#shint').textContent = `r = ${fmt(r)}, s = ${fmt(state.signature.s)} (tampered)`;
+      try {
+        state.verifyResult = ECDSA.verify(c, state.hash, state.publicKey, [state.signature.r, state.signature.s]);
+        state.verifyPanic = null;
+        state.verifySteps = buildVerifySteps();
+      } catch (err) {
+        state.verifyResult = null;
+        state.verifyPanic = err.message || String(err);
+        state.verifySteps = buildPanicSteps(state.verifyPanic);
+      }
+      state.stage = 'verify';
+      state.step = 0;
+      render();
+      return;
+    }
+
+    if (act === 'reuse') {
+      const c = ctx();
+      if (!c.isReal) { showError('This demo needs the teaching curve.'); return; }
+      const k = state.k;
+      const h1 = ECDSA.generateHashLessThan('first message', c.order);
+      const h2 = ECDSA.generateHashLessThan('second message', c.order);
+      const s1 = ECDSA.sign(c, h1, state.d, k).s;
+      const s2 = ECDSA.sign(c, h2, state.d, k).s;
+      const r = ECDSA.sign(c, h1, state.d, k).r;
+
+      const sDiff = mod(s1 - s2, c.order);
+      const hDiff = mod(h1 - h2, c.order);
+      const kRecovered = mod(hDiff * modPow(sDiff, c.order - 2n, c.order), c.order);
+      const dRecovered = mod(modPow(r, c.order - 2n, c.order) * mod(s1 * kRecovered - h1, c.order), c.order);
+
+      $('#reuse-out').innerHTML = `<div class="status bad"><div>
+        <b>Two signatures, the same nonce k = ${k}:</b><br>
+        s₁ = ${s1}, s₂ = ${s2}, H₁ = ${h1}, H₂ = ${h2}, r = ${r}<br>
+        k = (H₁ − H₂)·(s₁ − s₂)⁻¹ mod n = ${kRecovered} ${kRecovered === k ? '✓ the nonce is recovered' : '✗'}<br>
+        d = r⁻¹·(s₁·k − H₁) mod n = ${dRecovered} ${dRecovered === state.d ? '✓ <b>the private key is recovered</b>' : '✗'}<br>
+        Two signatures with the same nonce are all it takes. Never reuse k.
+      </div></div>`;
+    }
+  });
+
+  $('#prev').addEventListener('click', () => { stopPlay(); state.step = Math.max(0, state.step - 1); render(); });
+  $('#next').addEventListener('click', () => { stopPlay(); state.step += 1; render(); });
+  $('#range').addEventListener('input', (e) => { stopPlay(); state.step = Number(e.target.value); render(); });
+  $('#play').addEventListener('click', togglePlay);
+  $('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ecc-theme', next); } catch (err) { /* ignore */ }
+  });
+
+  try {
+    const saved = localStorage.getItem('ecc-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (err) { /* ignore */ }
+
+  render();
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ecc-rs visualizers</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◈</text></svg>">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand"><b>ECC-RS</b></div>
+  <nav class="crumbs"><em>visualizers</em></nav>
+  <button class="chip ghost theme-btn" id="theme" type="button">theme</button>
+</header>
+
+<section class="title">
+  <p class="kicker">ecc-rs · interactive</p>
+  <h1>Visualizers</h1>
+  <p class="lead">
+    Three instrument panels that show the mathematics behind this crate. Every number on these
+    pages is computed the way the Rust computes it: the pages mirror the source line by line, and
+    they show the branches where the crate panics just as faithfully as the branches where it
+    returns a result.
+  </p>
+</section>
+
+<div class="frame">
+  <aside class="rail">
+    <section class="rail-group">
+      <h2>the stack</h2>
+      <div class="checks" style="grid-template-columns:1fr">
+        <div class="check">
+          <div class="name"><code>ecc/src/finite_field.rs</code></div>
+          <div class="detail">numbers — F<sub>p</sub> arithmetic</div>
+        </div>
+        <div class="check">
+          <div class="name"><code>ecc/src/elliptic_curve.rs</code></div>
+          <div class="detail">points — the group law</div>
+        </div>
+        <div class="check">
+          <div class="name"><code>ecdsa/src/lib.rs</code></div>
+          <div class="detail">signatures — the application</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="rail-group">
+      <h2>elsewhere</h2>
+      <div class="chips">
+        <a class="chip" href="https://github.com/leodyversemilla07/ecc-rs">repository</a>
+        <a class="chip" href="https://github.com/leodyversemilla07/ecc-rs-transcript">transcript</a>
+      </div>
+      <p class="cap" style="margin-top:10px">The course transcript is a private repository. The code
+      and these pages are not.</p>
+    </section>
+
+    <section class="rail-group">
+      <h2>publishing</h2>
+      <p class="cap">These pages are served from the repository's <code>gh-pages</code> branch. After
+      changing anything here, rebuild and push it:</p>
+      <div class="readout" style="margin-top:8px;border-left-color:var(--cyan);padding:8px 12px">
+        <div class="expr" style="font-size:.8rem">node visualizers/assets/publish.mjs</div>
+      </div>
+    </section>
+  </aside>
+
+  <main class="canvas">
+
+    <section class="panel">
+      <div class="panel-h"><span>the pages</span><span class="note">pick one</span></div>
+      <div style="display:grid;gap:12px">
+
+        <a class="panel" href="finite-field.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
+          <div class="panel-h"><span>1 · finite field operations</span><span class="note">open →</span></div>
+          <p class="cap">Numbers on a clock of <b>p</b> hours. Addition, subtraction, multiplication,
+          division and both kinds of inverse — plus Fermat's little theorem, the FLT-powered division
+          the crate actually uses, and modulo for 60-digit numbers.</p>
+          <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecc/src/finite_field.rs</p>
+        </a>
+
+        <a class="panel" href="point-arithmetic.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
+          <div class="panel-h"><span>2 · elliptic curve operations</span><span class="note">open →</span></div>
+          <p class="cap">The F<sub>p</sub> grid of points on the curve, a step-by-step walkthrough of
+          <code>add</code>, <code>double</code> and <code>multiply</code>, the branch conditions the
+          code tests, and the double-and-add ladder drawn on the curve.</p>
+          <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecc/src/elliptic_curve.rs · ecc/src/point.rs</p>
+        </a>
+
+        <a class="panel" href="ecdsa.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
+          <div class="panel-h"><span>3 · ECDSA</span><span class="note">open →</span></div>
+          <p class="cap">Key generation, signing and verification on the teaching curve and on
+          secp256k1 — with the proof that verification works, and a demo of what reusing a nonce does
+          to your private key.</p>
+          <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecdsa/src/lib.rs</p>
+        </a>
+
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>how these pages stay honest</span></div>
+      <div class="grid-3">
+        <div>
+          <h3>they mirror the source</h3>
+          <p class="cap">The Rust snippets shown next to the animation are generated from the actual
+          files in this repository by <code>node visualizers/assets/sync-rs-source.mjs</code>. They
+          cannot drift silently.</p>
+        </div>
+        <div>
+          <h3>they mirror the semantics</h3>
+          <p class="cap">The JavaScript in <code>visualizers/assets/ecc.js</code> re-implements
+          <code>FiniteField</code>, <code>EllipticCurve</code> and <code>Ecdsa</code>, including
+          their <code>assert!</code>s. A failing assert becomes a visible "the program panics
+          here".</p>
+        </div>
+        <div>
+          <h3>they were checked against the crate</h3>
+          <p class="cap">A parity harness compared the two implementations over more than 300,000
+          cases — every field operation for eleven primes, every point addition and doubling for five
+          curves, 40 scalar multiplications each, and every key pair and nonce on the teaching curve —
+          with zero differences.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>run it locally</span></div>
+      <p class="cap">There is no build step. Open any page in a browser, or serve the folder:</p>
+      <div class="readout" style="margin-top:12px;border-left-color:var(--cyan)">
+        <div class="expr">python -m http.server --directory visualizers</div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>ecc-rs</span>
+  <a href="https://github.com/leodyversemilla07/ecc-rs">repository</a>
+  <a href="https://github.com/leodyversemilla07/ecc-rs-transcript">private transcript</a>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  try {
+    const saved = localStorage.getItem('ecc-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (err) { /* ignore */ }
+  $('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ecc-theme', next); } catch (err) { /* ignore */ }
+  });
+}());
+</script>
+</body>
+</html>

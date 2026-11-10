@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Finite field operations — ecc-rs visualizers</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◈</text></svg>">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand"><b>ECC-RS</b><span>visualizers</span></div>
+  <nav class="crumbs"><a href="index.html">visualizers</a> / <em>finite field</em></nav>
+  <button class="chip ghost theme-btn" id="theme" type="button">theme</button>
+</header>
+
+<section class="title">
+  <p class="kicker">ecc/src/finite_field.rs</p>
+  <h1>Finite field operations</h1>
+  <p class="lead">
+    In a field with <b>p</b> elements the numbers sit on a clock with the hours 0 … p−1.
+    Every operation is a walk around that clock. This page mirrors
+    <code>FiniteField</code> from the <code>ecc</code> crate: each step is the line of Rust it
+    comes from, and each result is the value the Rust code returns.
+  </p>
+</section>
+
+<div class="frame">
+  <!-- ── control rail ──────────────────────────────────────────────── -->
+  <aside class="rail">
+    <section class="rail-group">
+      <h2>field</h2>
+      <label class="fld">
+        <span>modulus p</span>
+        <input id="pin" type="number" inputmode="numeric" min="2" max="31" step="1" value="7">
+        <span class="hint" id="phint"></span>
+      </label>
+      <label class="fld">
+        <span>a</span>
+        <input id="ain" type="number" inputmode="numeric" step="1" value="3">
+        <span class="hint">must be 0 … p−1</span>
+      </label>
+      <label class="fld" id="bfield">
+        <span>b</span>
+        <input id="bin" type="number" inputmode="numeric" step="1" value="5">
+        <span class="hint">must be 0 … p−1</span>
+      </label>
+    </section>
+
+    <section class="rail-group">
+      <h2>operation</h2>
+      <div class="chips" id="ops"></div>
+    </section>
+
+    <section class="rail-group">
+      <h2>presets</h2>
+      <div class="chips">
+        <button class="chip" data-preset="add">a + b</button>
+        <button class="chip" data-preset="sub">a − b</button>
+        <button class="chip" data-preset="mul">a × b</button>
+        <button class="chip" data-preset="div">a ÷ b</button>
+        <button class="chip" data-preset="neg">−a</button>
+        <button class="chip" data-preset="inv">a⁻¹</button>
+        <button class="chip" data-preset="p11">p = 11</button>
+      </div>
+    </section>
+
+    <div class="err" id="err" role="alert"></div>
+  </aside>
+
+  <!-- ── canvas ───────────────────────────────────────────────────── -->
+  <main class="canvas">
+
+    <div class="readout">
+      <div class="expr" id="eq"></div>
+      <div class="src" id="src"></div>
+    </div>
+    <div id="msg"></div>
+
+    <div class="split">
+      <section class="panel figure">
+        <div class="panel-h"><span>the clock</span><span class="note" id="clock-cap"></span></div>
+        <svg id="clock" viewBox="0 0 360 360" role="img" aria-label="Clock diagram of the operation"></svg>
+        <div class="stepper">
+          <button class="chip" id="rp" type="button">replay</button>
+          <input id="hop" type="range" min="0" value="0" aria-label="Step through the walk">
+          <span class="count" id="hopcount"></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h"><span>trace</span><span class="note" id="fn-title"></span></div>
+        <div class="log" id="steps"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-h"><span>rust source</span><span class="note">ecc/src/finite_field.rs</span></div>
+      <div class="listing" id="rs"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span id="tt">operation table</span><span class="note" id="tc"></span></div>
+      <div class="tw" id="tb"></div>
+      <div id="table-explain"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>fermat's little theorem</span><span class="note" id="fc"></span></div>
+      <div class="readout" style="border-left-color:var(--cyan);margin-bottom:12px">
+        <div class="expr" id="feq"></div>
+      </div>
+      <div class="chain" id="fch"></div>
+      <div class="pill-row" id="flg"></div>
+      <div class="log" id="fst" style="margin-top:12px"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>flt as a composite detector</span><span class="note">one-way, never a proof</span></div>
+
+      <div class="status warn">
+        <div><b>⚠ One-way.</b> If <code>a^(n−1) ≢ 1 (mod n)</code> then <code>n</code> is definitely
+        composite. Passing for every coprime base does <b>not</b> prove <code>n</code> is prime —
+        Carmichael numbers pass and are composite.</div>
+      </div>
+
+      <div class="pill-row" style="margin-top:14px">
+        <label class="fld" style="margin:0;width:7rem"><span>test n</span>
+          <input id="flt-n" type="number" inputmode="numeric" min="2" max="999" value="7"></label>
+        <label class="fld" style="margin:0;width:7rem"><span>base a</span>
+          <input id="flt-a" type="number" inputmode="numeric" min="2" max="998" value="3"></label>
+        <button class="chip" id="flt-test-btn" type="button" style="align-self:flex-end;margin-bottom:8px">test</button>
+        <span id="flt-result" style="align-self:flex-end;margin-bottom:8px"></span>
+      </div>
+      <div id="flt-test-detail" style="margin-top:12px"></div>
+
+      <h3>sweep every coprime base</h3>
+      <div class="pill-row">
+        <label class="fld" style="margin:0;width:7rem"><span>sweep n</span>
+          <input id="flt-sweep-n" type="number" inputmode="numeric" min="2" max="1200" value="7"></label>
+        <button class="chip" id="flt-sweep-btn" type="button" style="align-self:flex-end;margin-bottom:8px">sweep</button>
+        <div class="chips" style="align-self:flex-end;margin-bottom:8px">
+          <button class="chip ghost" data-sweep="561">561</button>
+          <button class="chip ghost" data-sweep="1105">1105</button>
+          <button class="chip ghost" data-sweep="15">15</button>
+          <button class="chip ghost" data-sweep="17">17</button>
+        </div>
+      </div>
+      <div id="flt-sweep-result" style="margin-top:12px"></div>
+
+      <table class="data" style="max-width:720px;margin-top:16px">
+        <tr><th>flt result</th><th>conclusion</th><th>certainty</th></tr>
+        <tr><td>a^(n−1) ≢ 1 for some base</td><td class="fail">n is composite</td><td>100% certain</td></tr>
+        <tr><td>a^(n−1) ≡ 1 for all coprime bases</td><td class="pass">n <em>might</em> be prime</td><td>not certain</td></tr>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>flt-powered division</span><span class="note">what FiniteField::div does</span></div>
+
+      <div class="readout" style="border-left-color:var(--cyan);margin-bottom:12px">
+        <div class="expr" id="div-formula-eq"></div>
+      </div>
+
+      <div class="status info">
+        <div><b>Why it works.</b> By FLT, <code>b^(p−1) ≡ 1 (mod p)</code>. Split off one b:
+        <code>b × b^(p−2) ≡ 1</code>. So <code>b^(p−2)</code> is by definition <code>b⁻¹</code>,
+        and <code>a ÷ b = a × b^(p−2) mod p</code>.</div>
+      </div>
+
+      <div class="pill-row" style="margin-top:14px">
+        <label class="fld" style="margin:0;width:6rem"><span>divide a</span>
+          <input id="div-a" type="number" inputmode="numeric" value="3"></label>
+        <label class="fld" style="margin:0;width:6rem"><span>by b</span>
+          <input id="div-b" type="number" inputmode="numeric" value="5"></label>
+        <label class="fld" style="margin:0;width:6rem"><span>mod p</span>
+          <input id="div-p" type="number" inputmode="numeric" min="2" max="31" value="7"></label>
+        <button class="chip" id="div-compute-btn" type="button" style="align-self:flex-end;margin-bottom:8px">compute</button>
+      </div>
+      <div id="div-trace-output" style="margin-top:12px"></div>
+
+      <h3>power chain</h3>
+      <div id="div-power-chain"></div>
+
+      <h3>flt vs. brute force</h3>
+      <div id="div-comparison"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>modulo for big numbers</span><span class="note">BigUint arithmetic</span></div>
+
+      <div class="status info" style="margin-bottom:14px">
+        <div>The crate stores every field element as a <code>num_bigint::BigUint</code>, so the same
+        arithmetic works for a toy curve and for 256-bit secp256k1. Two facts keep huge numbers
+        tractable: <code>N = q × m + r</code> gives <code>N mod m</code>, and <code>modpow</code>
+        never builds <code>a^e</code> — it squares and multiplies.</div>
+      </div>
+
+      <h3>method 1 — bring the digits down one at a time</h3>
+      <div class="status info" style="margin-bottom:14px">
+        <div>Reducing mod m after <b>every</b> step gives the same remainder, because
+        <code>(x mod m) × 10 + d ≡ x × 10 + d (mod m)</code>. Only one small running remainder
+        <code>r</code> is ever written down — exactly like long division on paper.</div>
+      </div>
+
+      <div class="pill-row">
+        <label class="fld" style="margin:0;flex:1;min-width:14rem"><span>N</span>
+          <input id="bm-n" type="text" inputmode="numeric" autocomplete="off" value="123456789012345678901234567890"></label>
+        <label class="fld" style="margin:0;width:8rem"><span>m</span>
+          <input id="bm-m" type="text" inputmode="numeric" autocomplete="off" value="97"></label>
+        <div class="chips" style="align-self:flex-end;margin-bottom:8px">
+          <button class="chip" id="bm-rand" type="button">random 60-digit N</button>
+          <button class="chip" id="bm-usep" type="button">use field size p</button>
+        </div>
+      </div>
+      <div id="bm-out" style="margin-top:12px"></div>
+      <div class="tw" id="bm-digits" style="margin-top:12px"></div>
+
+      <h3>method 2 — huge powers, square and multiply</h3>
+      <div class="pill-row">
+        <label class="fld" style="margin:0;width:8rem"><span>a</span>
+          <input id="bp-a" type="text" inputmode="numeric" autocomplete="off" value="7"></label>
+        <label class="fld" style="margin:0;flex:1;min-width:14rem"><span>e</span>
+          <input id="bp-e" type="text" inputmode="numeric" autocomplete="off" value="1000003"></label>
+      </div>
+      <div id="bp-out" style="margin-top:12px"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>why p must be prime</span><span class="note">the crate assumes it</span></div>
+      <p class="cap" style="margin-bottom:12px">
+        <code>FiniteField::inverse_mul</code> assumes that <code>p</code> is prime — it uses
+        Fermat's little theorem, which only holds for a prime modulus. The crate documents this as
+        a known limitation: the function does <b>not</b> verify primality.
+      </p>
+      <div id="prime-proof"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>notes</span></div>
+      <div class="grid-2">
+        <div>
+          <h3>wrapping is the whole idea</h3>
+          <p class="cap">"mod p" means: when you pass p−1, go back to 0 and keep counting. That is
+          why results never leave the clock.</p>
+        </div>
+        <div>
+          <h3>two kinds of inverse</h3>
+          <p class="cap">The additive inverse −a satisfies a + (−a) ≡ 0 and is <code>p − a</code>.
+          The multiplicative inverse a⁻¹ satisfies a × a⁻¹ ≡ 1 and is <code>a^(p−2)</code>.</p>
+        </div>
+        <div>
+          <h3>only two real operations</h3>
+          <p class="cap">Subtraction is adding −b and division is multiplying by b⁻¹, so
+          <code>add</code> and <code>mul</code> are the only two primitives in the crate.</p>
+        </div>
+        <div>
+          <h3>the asserts are load-bearing</h3>
+          <p class="cap"><code>FiniteField::add</code> and <code>mul</code> assert that both
+          operands are already reduced. The crate never reduces an input for you.</p>
+        </div>
+        <div>
+          <h3>flt gives inverses for free</h3>
+          <p class="cap">Instead of searching for b⁻¹ by trial, Fermat says b⁻¹ = b^(p−2) mod p.
+          This is how real crypto libraries compute modular inverses in prime fields.</p>
+        </div>
+        <div>
+          <h3>flt ≠ primality proof</h3>
+          <p class="cap">FLT can only disprove primality. Passing for all bases is necessary but
+          not sufficient — Carmichael numbers are the counterexamples.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>ecc-rs</span>
+  <a href="index.html">← visualizers</a>
+  <a href="point-arithmetic.html">elliptic curve operations →</a>
+  <a href="https://github.com/leodyversemilla07/ecc-rs">source</a>
+</footer>
+
+<script src="assets/rust-source.js"></script>
+<script src="assets/ecc.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const { ff, mod, modPow, gcd, isPrime, factorizeText, rsView } = ECC;
+
+  const $ = (s) => document.querySelector(s);
+  const pl = (n) => (n === 1n ? '' : 's');
+
+  const OPS = {
+    add: { label: 'add', sym: '+', fn: 'FiniteField::add', region: 'add', table: 'add' },
+    sub: { label: 'sub', sym: '−', fn: 'FiniteField::sub', region: 'sub', table: 'sub' },
+    mul: { label: 'mul', sym: '×', fn: 'FiniteField::mul', region: 'mul', table: 'mul' },
+    div: { label: 'div', sym: '÷', fn: 'FiniteField::div', region: 'div', table: 'div' },
+    neg: { label: '−a', sym: '−a', fn: 'FiniteField::inverse_add', region: 'inverse_add', table: null },
+    inv: { label: 'a⁻¹', sym: 'a⁻¹', fn: 'FiniteField::inverse_mul', region: 'inverse_mul', table: null },
+  };
+
+  const state = { p: 7n, op: 'add', a: 3n, b: 5n, shown: 0, timer: null, path: null };
+
+  const hue = (k) => Math.round((Number(k) / Number(state.p)) * 300);
+
+  const line = (tone, s) => ({ tone, s });
+
+  /* ── the six operations ──────────────────────────────────────────── */
+
+  function calc() {
+    const p = state.p;
+    const a = state.a;
+    const b = state.b;
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+    const out = { steps, path: null, cell: null, table: 'add', region: OPS[state.op].region };
+
+    if (state.op === 'add') {
+      const r = mod(a + b, p);
+      out.r = r;
+      out.path = { start: a, step: 1n, count: b };
+      out.cell = [a, b];
+      out.table = 'add';
+      out.eq = `${a}<span class="op">+</span>${b}<span class="op">≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+      push('FiniteField::add(a, b, p)', [
+        line('code', 'assert!(a < p, "a must be less than p");'),
+        line('code', 'assert!(b < p, "b must be less than p");'),
+        line('code', '(a + b).modpow(&BigUint::from(1u32), p)'),
+        line('calc', `a < p → ${a} < ${p} ✓     b < p → ${b} < ${p} ✓`),
+        line('calc', `a + b = ${a} + ${b} = ${a + b}`),
+        line('calc', `modpow(x, 1, p) is x mod p, so the result is ${a + b} mod ${p} = ${r}`),
+      ]);
+      push('the wrap', a + b >= p
+        ? [
+          line('calc', `${a + b} = 1 × ${p} + ${r}, so the walk passes ${p - 1n} and lands back on ${r}`),
+          line('dim', 'mod p means: keep counting, and every time you pass p−1 you go back to 0'),
+        ]
+        : [line('calc', `${a + b} is below ${p}, so the walk never leaves the clock`)]);
+      return out;
+    }
+
+    if (state.op === 'sub') {
+      const dInv = mod(p - b, p);
+      const r = mod(a + dInv, p);
+      out.r = r;
+      out.path = { start: a, step: 1n, count: dInv };
+      out.cell = [a, b];
+      out.table = 'sub';
+      out.eq = `${a}<span class="op">−</span>${b}<span class="op">≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+      push('FiniteField::sub(c, d, p)', [
+        line('code', 'let d_inv = Self::inverse_add(d, p);'),
+        line('code', 'Self::add(c, &d_inv, p)'),
+        line('calc', `d_inv = inverse_add(${b}) = (${p} − ${b}) mod ${p} = ${dInv}`),
+        line('calc', `add(${a}, ${dInv}) = (${a} + ${dInv}) mod ${p} = ${r}`),
+      ]);
+      push('why that works', [
+        line('dim', 'subtraction is addition with the additive inverse: a − b ≡ a + (−b)'),
+        line('dim', `walking ${dInv} step${pl(dInv)} clockwise is the same as walking ${b} step${pl(b)} counter-clockwise`),
+      ]);
+      return out;
+    }
+
+    if (state.op === 'mul') {
+      const prod = a * b;
+      const r = mod(prod, p);
+      out.r = r;
+      out.path = { start: 0n, step: a, count: b };
+      out.cell = [a, b];
+      out.table = 'mul';
+      out.eq = `${a}<span class="op">×</span>${b}<span class="op">≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+      push('FiniteField::mul(a, b, p)', [
+        line('code', 'assert!(a < p, "a must be less than p");'),
+        line('code', 'assert!(b < p, "b must be less than p");'),
+        line('code', '(a * b).modpow(&BigUint::from(1u32), p)'),
+        line('calc', `a < p → ${a} < ${p} ✓     b < p → ${b} < ${p} ✓`),
+        line('calc', `a × b = ${a} × ${b} = ${prod}`),
+        line('calc', `${prod} = ${prod / p} × ${p} + ${r}, so the remainder is ${r}`),
+      ]);
+      push('the picture', [
+        line('dim', `multiplication is repeated addition: make ${b} jump${pl(b)} of size ${a}, starting at 0`),
+        line('dim', `the clock shows exactly that walk — ${b} hop${pl(b)}, each of size ${a}`),
+      ]);
+      return out;
+    }
+
+    if (state.op === 'div') {
+      const bInv = modPow(b, p - 2n, p);
+      const r = mod(a * bInv, p);
+      out.r = r;
+      out.path = { start: 0n, step: bInv, count: a };
+      out.cell = [a, b];
+      out.table = 'div';
+      out.eq = `${a}<span class="op">÷</span>${b}<span class="op">≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+      push('FiniteField::div(c, d, p)', [
+        line('code', 'let d_inv = Self::inverse_mul(d, p);'),
+        line('code', 'Self::mul(c, &d_inv, p)'),
+        line('calc', `d_inv = inverse_mul(${b}) = ${b}^(${p} − 2) mod ${p} = ${bInv}`),
+        line('calc', `mul(${a}, ${bInv}) = (${a} × ${bInv}) mod ${p} = ${r}`),
+      ]);
+      if (b === 0n) {
+        out.warn = '<b>Division by zero.</b> <code>inverse_mul(0, p)</code> computes <code>0^(p−2) = 0</code>, and the crate does not guard against it — the result is silently wrong.';
+      } else {
+        push('why that works', [
+          line('dim', `by Fermat's little theorem ${b}^(${p} − 1) ≡ 1 (mod ${p}), so ${b}^(${p} − 2) is the multiplicative inverse of ${b}`),
+          line('calc', `check: ${b} × ${bInv} = ${b * bInv} ≡ ${mod(b * bInv, p)} (mod ${p})`),
+        ]);
+      }
+      return out;
+    }
+
+    if (state.op === 'neg') {
+      const r = mod(p - a, p);
+      out.r = r;
+      out.path = { start: a, step: 1n, count: r };
+      out.cell = [a, r];
+      out.table = 'add';
+      out.eq = `<span class="op">−</span>${a}<span class="op">≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+      push('FiniteField::inverse_add(c, p)', [
+        line('code', 'assert!(c < p, "c must be smaller than p");'),
+        line('code', '(p - c) % p'),
+        line('calc', `c < p → ${a} < ${p} ✓`),
+        line('calc', `(p − c) mod p = (${p} − ${a}) mod ${p} = ${r}`),
+      ]);
+      push('why that works', [
+        line('dim', 'the additive inverse is the number that brings a back to 0'),
+        line('calc', `check: ${a} + ${r} = ${a + r} ≡ ${mod(a + r, p)} (mod ${p})`),
+        line('dim', 'for c = 0 the crate reduces (p − 0) mod p back to 0, so 0 is its own inverse'),
+      ]);
+      return out;
+    }
+
+    const r = modPow(a, p - 2n, p);
+    out.r = r;
+    out.path = a === 0n ? null : { start: 0n, step: a, count: r };
+    out.cell = [a, r];
+    out.table = 'mul';
+    out.eq = `${a}<span class="op">⁻¹ ≡</span><span class="val">${r}</span><span class="op">mod ${p}</span>`;
+    push('FiniteField::inverse_mul(c, p)', [
+      line('code', 'let exponent = p - BigUint::from(2u32);'),
+      line('code', 'c.modpow(&exponent, p)'),
+      line('calc', `exponent = p − 2 = ${p} − 2 = ${p - 2n}`),
+      line('calc', `${a}^${p - 2n} mod ${p} = ${r}`),
+    ]);
+    if (a === 0n) {
+      out.warn = '<b>0 has no multiplicative inverse.</b> Nothing times 0 gives 1. The crate returns 0 without complaining.';
+    } else {
+      push('why that works', [
+        line('dim', `by Fermat's little theorem ${a}^(${p} − 1) ≡ 1 (mod ${p})`),
+        line('dim', `splitting off one factor of ${a} gives ${a} × ${a}^(${p} − 2) ≡ 1, so ${a}^(${p} − 2) is ${a}⁻¹`),
+        line('calc', `check: ${a} × ${r} = ${a * r} ≡ ${mod(a * r, p)} (mod ${p})`),
+        line('dim', 'the clock walks 0, a, 2a, 3a, … and the inverse is the number of jumps that lands on 1'),
+      ]);
+    }
+    return out;
+  }
+
+  /* ── clock ───────────────────────────────────────────────────────── */
+
+  function drawClock() {
+    const C = 180;
+    const R = 132;
+    const p = Number(state.p);
+    const nr = Math.min(13, Math.floor(R * Math.sin((Math.PI / p)) * 0.6));
+    const pos = (k) => {
+      const t = ((-90 + (360 * k) / p) * Math.PI) / 180;
+      return [C + R * Math.cos(t), C + R * Math.sin(t)];
+    };
+
+    let s = `<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--accent)"/></marker></defs>`;
+    s += `<circle cx="${C}" cy="${C}" r="${R}" class="clock-ring"/>`;
+    s += `<text x="${C}" y="${C + 5}" text-anchor="middle" class="clock-cap">mod ${p}</text>`;
+
+    const path = state.path;
+    let cur = path ? path.start : 0n;
+    if (path) {
+      for (let i = 1; i <= Math.min(state.shown, Number(path.count)); i += 1) {
+        const nx = mod(cur + path.step, state.p);
+        const [x1, y1] = pos(Number(cur));
+        const [x2, y2] = pos(Number(nx));
+        if (cur === nx) {
+          const ux = (x1 - C) / R;
+          const uy = (y1 - C) / R;
+          const cx = x1 + ux * (nr + 6);
+          const cy = y1 + uy * (nr + 6);
+          s += `<circle cx="${cx}" cy="${cy}" r="8" fill="none" stroke="var(--accent)" stroke-width="2"/>`
+            + `<text x="${cx + ux * 19}" y="${cy + uy * 19 + 4}" text-anchor="middle" class="clock-cap" fill="var(--accent)">${i}</text>`;
+        } else {
+          const ch = Math.hypot(x2 - x1, y2 - y1);
+          const f = 0.82 - 0.32 * Math.min(1, ch / (2 * R));
+          const cx = C + ((x1 + x2) / 2 - C) * f;
+          const cy = C + ((y1 + y2) / 2 - C) * f;
+          const unit = (x, y, tx, ty) => {
+            const d = Math.hypot(tx - x, ty - y) || 1;
+            return [(tx - x) / d, (ty - y) / d];
+          };
+          const [ax, ay] = unit(x1, y1, cx, cy);
+          const [bx, by] = unit(x2, y2, cx, cy);
+          const sx = x1 + ax * nr;
+          const sy = y1 + ay * nr;
+          const ex = x2 + bx * (nr + 3);
+          const ey = y2 + by * (nr + 3);
+          const lx = 0.25 * sx + 0.5 * cx + 0.25 * ex;
+          const ly = 0.25 * sy + 0.5 * cy + 0.25 * ey;
+          s += `<path d="M${sx} ${sy}Q${cx} ${cy} ${ex} ${ey}" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#ar)"/>`
+            + `<text x="${lx}" y="${ly + 4}" text-anchor="middle" class="clock-cap" fill="var(--accent)" style="font-weight:700">${i}</text>`;
+        }
+        cur = nx;
+      }
+    }
+
+    const done = path && state.shown >= Number(path.count);
+    for (let k = 0; k < p; k += 1) {
+      const [x, y] = pos(k);
+      let fill = `hsl(${hue(k)} 48% var(--cell-l, 20%))`;
+      let stroke = 'var(--line)';
+      let sw = 1;
+      if (path && BigInt(k) === path.start) { stroke = 'var(--cyan)'; sw = 2; }
+      if (path && BigInt(k) === cur && (state.shown > 0 || Number(path.count) === 0)) {
+        fill = 'var(--accent)';
+        stroke = 'var(--accent)';
+        sw = 2;
+      }
+      s += `<rect x="${x - nr}" y="${y - nr}" width="${nr * 2}" height="${nr * 2}" class="clock-node" style="fill:${fill};stroke:${stroke};stroke-width:${sw}"/>`;
+      s += `<text x="${x}" y="${y + 4}" class="clock-label" style="font-size:${Math.min(15, Math.round(nr * 0.95))}px">${k}</text>`;
+    }
+
+    if (path) {
+      let [x, y] = pos(Number(path.start));
+      let ux = (x - C) / R;
+      let uy = (y - C) / R;
+      s += `<text x="${x + ux * (nr + 13)}" y="${y + uy * (nr + 13) + 4}" text-anchor="middle" class="clock-cap" fill="var(--cyan)">start</text>`;
+      if (done) {
+        [x, y] = pos(Number(cur));
+        ux = (x - C) / R;
+        uy = (y - C) / R;
+        s += `<text x="${x + ux * (nr + 13)}" y="${y + uy * (nr + 13) + 4}" text-anchor="middle" class="clock-cap" fill="var(--accent)">result</text>`;
+      }
+    }
+
+    $('#clock').innerHTML = s;
+    $('#hop').value = String(state.shown);
+    $('#hopcount').textContent = path ? `${state.shown} / ${path.count}` : '—';
+  }
+
+  function play() {
+    clearInterval(state.timer);
+    state.shown = 0;
+    drawClock();
+    const count = state.path ? Number(state.path.count) : 0;
+    if (!count || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      state.shown = count;
+      drawClock();
+      return;
+    }
+    state.timer = setInterval(() => {
+      state.shown += 1;
+      drawClock();
+      if (state.shown >= count) clearInterval(state.timer);
+    }, 550);
+  }
+
+  /* ── prime proof ─────────────────────────────────────────────────── */
+
+  function showPrimeProof(n) {
+    const box = $('#prime-proof');
+    if (!box) return;
+    if (!Number.isInteger(n) || n < 2 || n > 31) {
+      box.innerHTML = '<p class="cap">Enter a whole number from 2 to 31.</p>';
+      return;
+    }
+    const limit = Math.floor(Math.sqrt(n));
+    const checks = [];
+    for (let d = 2; d <= limit; d += 1) {
+      const r = n % d;
+      checks.push(`<li>Test divisor <b>${d}</b>: ${n} ÷ ${d} = ${Math.floor(n / d)} remainder <b>${r}</b>. ${r === 0 ? `Because the remainder is 0, ${n} is divisible by ${d}.` : `The remainder is not 0, so ${d} is not a factor.`}</li>`);
+      if (r === 0) break;
+    }
+    const prime = isPrime(BigInt(n));
+    box.innerHTML = `
+      <p class="cap">A prime number is an integer greater than 1 whose only positive factors are <b>1 and itself</b>. We test whether any integer from 2 up to √p divides it exactly.</p>
+      <div class="readout" style="margin:12px 0;border-left-color:var(--cyan)"><div class="expr">p prime ⇔ p &gt; 1 ∧ p mod d ≠ 0 for 2 ≤ d ≤ √p</div></div>
+      <p class="cap"><b>Why stop at √p?</b> If p were composite it could be written p = u × v, and at least one of u or v must be ≤ √p. So if no divisor exists up to √p, there cannot be any factor pair.</p>
+      <p class="cap"><b>Check p = ${n}:</b> √${n} ≈ ${Math.sqrt(n).toFixed(3)}, so test the divisors 2 … ⌊√${n}⌋ = ${limit}.</p>
+      ${checks.length ? `<ol class="cap">${checks.join('')}</ol>` : '<p class="cap">There are no whole-number divisors to test because √2 &lt; 2.</p>'}
+      <div class="status ${prime ? 'good' : 'bad'}" style="margin-top:12px"><div><b>${prime ? `${n} is prime.` : `${n} is not prime.`}</b> ${prime ? 'No tested divisor divides it exactly, so its only positive factors are 1 and itself.' : 'A divisor was found, so it has a factor other than 1 and itself.'}</div></div>`;
+  }
+
+  /* ── operation table ─────────────────────────────────────────────── */
+
+  function tableValue(kind, i, j) {
+    const p = state.p;
+    if (kind === 'add') return mod(i + j, p);
+    if (kind === 'sub') return mod(i - j, p);
+    if (kind === 'mul') return mod(i * j, p);
+    if (kind === 'div') return j === 0n ? null : mod(i * modPow(j, p - 2n, p), p);
+    return null;
+  }
+
+  function explainCell(kind, i, j) {
+    const p = state.p;
+    let html = '<div class="status info"><div><b>How this cell is computed</b> — the exact Rust calls.';
+    if (kind === 'add') {
+      html += `<code>FiniteField::add(&${i}, &${j}, &p)</code> → <code>(${i} + ${j}) mod ${p} = ${mod(i + j, p)}</code>`;
+    } else if (kind === 'sub') {
+      const dInv = mod(p - j, p);
+      html += `<code>inverse_add(&${j}, &p)</code> = <code>(${p} − ${j}) mod ${p} = ${dInv}</code>, then <code>add(&${i}, &${dInv}, &p)</code> → <code>(${i} + ${dInv}) mod ${p} = ${mod(i + dInv, p)}</code>`;
+    } else if (kind === 'mul') {
+      html += `<code>FiniteField::mul(&${i}, &${j}, &p)</code> → <code>(${i} × ${j}) mod ${p} = ${mod(i * j, p)}</code>`;
+    } else if (kind === 'div') {
+      if (j === 0n) return '<div class="status bad"><div><b>Undefined.</b> The Rust computes <code>inverse_mul(0, p)</code> = <code>0^(p−2)</code> = 0 and returns 0 — a silent bug the crate does not guard against.</div></div>';
+      const inv = modPow(j, p - 2n, p);
+      html += `<code>inverse_mul(&${j}, &p)</code> = <code>${j}^(${p} − 2) mod ${p} = ${inv}</code> (Fermat), then <code>mul(&${i}, &${inv}, &p)</code> → <code>(${i} × ${inv}) mod ${p} = ${mod(i * inv, p)}</code>`;
+    }
+    return `${html}</div></div>`;
+  }
+
+  function renderTable(out) {
+    const kind = out.table;
+    const titles = { add: 'addition table', sub: 'subtraction table', mul: 'multiplication table', div: 'division table' };
+    $('#tt').textContent = `${titles[kind]} · ℤ${state.p}`;
+    $('#tc').textContent = 'rows a · cols b · click to load';
+
+    let h = '<table class="op"><tr><th></th>';
+    for (let j = 0n; j < state.p; j += 1n) {
+      h += `<th class="${out.cell && out.cell[1] === j ? 'hl' : ''}">${j}</th>`;
+    }
+    h += '</tr>';
+    for (let i = 0n; i < state.p; i += 1n) {
+      h += `<tr><th class="${out.cell && out.cell[0] === i ? 'hl' : ''}">${i}</th>`;
+      for (let j = 0n; j < state.p; j += 1n) {
+        const v = tableValue(kind, i, j);
+        const c = out.cell && out.cell[0] === i && out.cell[1] === j;
+        const rc = out.cell && (out.cell[0] === i || out.cell[1] === j);
+        h += v === null
+          ? `<td class="na" data-i="${i}" data-j="${j}">–</td>`
+          : `<td tabindex="0" class="${c ? 'cur' : rc ? 'rc' : ''}" style="--h:${hue(v)}" data-i="${i}" data-j="${j}">${v}</td>`;
+      }
+      h += '</tr>';
+    }
+    $('#tb').innerHTML = `${h}</table>`;
+
+    const box = $('#table-explain');
+    box.innerHTML = out.cell ? explainCell(kind, out.cell[0], out.cell[1]) : '';
+  }
+
+  /* ── fermat panel ────────────────────────────────────────────────── */
+
+  function renderFermat() {
+    const p = state.p;
+    const a = state.a;
+    const prime = isPrime(p);
+    const ok = prime && a !== 0n;
+
+    $('#fc').textContent = ok
+      ? `${a}^1 … ${a}^${p - 1n} mod ${p}`
+      : a === 0n ? 'a = 0 has no inverse' : `ℤ${p} is not prime — Fermat does not apply`;
+
+    let h = '';
+    let v = 1n;
+    let iv = 1n;
+    for (let k = 1n; k <= p - 1n; k += 1n) {
+      v = mod(v * a, p);
+      if (k <= p - 2n) iv = v;
+      const hi = ok && (k === p - 1n || k === p - 2n);
+      h += `<div class="pw${hi ? ' hi' : ''}" style="--h:${hue(v)}">${a}<sup>${k}</sup>=${v}</div>`;
+    }
+    if (p === 2n || p - 2n < 1n) iv = 1n;
+    $('#fch').innerHTML = h;
+    $('#flg').innerHTML = ok
+      ? `<span class="tag warn">exponent ${p - 2n} · the inverse</span><span class="tag good">exponent ${p - 1n} · always 1</span>`
+      : '';
+    $('#feq').innerHTML = ok
+      ? `${a}<span class="op">^${p - 1n} ≡</span><span class="val">1</span><span class="op">⇒</span>${a}<span class="op">⁻¹ ≡ ${a}^${p - 2n} ≡</span><span class="val">${iv}</span>`
+      : '';
+
+    $('#fst').innerHTML = ok
+      ? [
+        `Fermat: ${a}^${p - 1n} ≡ 1 (mod ${p}). The last box above is 1.`,
+        `Split off one a: ${a} × ${a}^${p - 2n} ≡ 1.`,
+        `So ${a}⁻¹ = ${a}^${p - 2n} ≡ ${iv}. Check: ${a} × ${iv} = ${a * iv} ≡ ${mod(a * iv, p)}.`,
+        `This is exactly what <code>FiniteField::inverse_mul</code> computes — one modpow, no search.`,
+      ].map((x, i) => `<div class="log-step done"><h3>·</h3><div class="lines"><div class="ln calc">${x}</div></div></div>`).join('')
+      : (a !== 0n
+        ? `<div class="log-step done"><h3>·</h3><div class="lines"><div class="ln bad">${a}^${p - 1n} ≡ ${v} (mod ${p})${v === 1n ? ', which happens to be 1 for this a, but the theorem is not guaranteed.' : ', not 1. Fermat\'s guarantee is gone.'}</div></div></div>`
+        : '');
+  }
+
+  /* ── flt playground ──────────────────────────────────────────────── */
+
+  function testFLT() {
+    const n = BigInt($('#flt-n').value);
+    const base = BigInt($('#flt-a').value);
+    if (!Number.isInteger(Number(n)) || n < 2n || base < 2n || base >= n) {
+      $('#flt-result').innerHTML = '<span class="tag bad">need 2 ≤ a &lt; n</span>';
+      $('#flt-test-detail').innerHTML = '';
+      return;
+    }
+    const result = modPow(base, n - 1n, n);
+    const prime = isPrime(n);
+    const coprime = gcd(base, n) === 1n;
+
+    let badge;
+    let verdict;
+    if (result === 1n) {
+      if (prime) {
+        badge = '<span class="tag good">consistent</span>';
+        verdict = `${base}^${n - 1n} ≡ 1 (mod ${n}). The FLT condition holds. We separately verified by trial division that ${n} is prime — but <b>FLT did not prove primality</b>, it merely did not contradict it.`;
+      } else {
+        badge = '<span class="tag warn">fooled — n is composite</span>';
+        verdict = `${base}^${n - 1n} ≡ 1 (mod ${n}), so ${n} <em>looks</em> prime to base ${base}. But ${n} is actually composite (${factorizeText(n)}) — a <b>pseudoprime</b> to base ${base}.`;
+      }
+    } else {
+      badge = '<span class="tag bad">composite — proven by flt</span>';
+      verdict = `${base}^${n - 1n} ≡ ${result} (mod ${n}), which is <b>not 1</b>. By the contrapositive of FLT, <b>n = ${n} is definitely not prime</b>. This is the one thing FLT can prove with certainty.`;
+    }
+    if (!coprime) {
+      verdict += ` (Also: gcd(${base}, ${n}) = ${gcd(base, n)} > 1, so the base shares a factor with n — that alone proves compositeness.)`;
+    }
+    $('#flt-result').innerHTML = badge;
+
+    let trace = '<div class="status info"><div><b>Computation trace</b> — the same <code>modpow</code> the crate uses.';
+    trace += `<br><span class="cap">base a = ${base} · test number n = ${n} · exponent n − 1 = ${n - 1n}</span>`;
+    if (n - 1n <= 30n) {
+      trace += '<div class="chain" style="margin-top:10px">';
+      let v = 1n;
+      for (let k = 1n; k <= n - 1n; k += 1n) {
+        v = mod(v * base, n);
+        trace += `<div class="pw${k === n - 1n ? ' hi' : ''}" style="--h:${Math.round((Number(v) / Number(n)) * 300)}">${base}^${k}=${v}</div>`;
+      }
+      trace += '</div>';
+    } else {
+      trace += '<div class="cap">Exponent too large for a step-by-step display; computed via fast modular exponentiation.</div>';
+    }
+    trace += `<br><b>Result:</b> ${base}^${n - 1n} ≡ <b>${result}</b> (mod ${n}) ${result === 1n ? '= 1' : '≠ 1'}`;
+    if (!coprime) {
+      trace += `<br><br>Note: gcd(${base}, ${n}) = ${gcd(base, n)} ≠ 1. FLT does not even apply — but the shared factor already proves n composite.`;
+    }
+    trace += `<br><br>${verdict}</div></div>`;
+
+    const caveat = result === 1n
+      ? '<div class="status warn"><div><b>Remember:</b> getting 1 does <b>not</b> mean n is prime. FLT is one-way: prime → condition holds. The reverse is not guaranteed.</div></div>'
+      : '<div class="status good"><div><b>This is conclusive.</b> FLT\'s contrapositive works: if a^(n−1) ≢ 1 mod n for any coprime base, then n is definitely composite.</div></div>';
+    $('#flt-test-detail').innerHTML = trace + caveat;
+  }
+
+  function sweepN() {
+    const n = BigInt($('#flt-sweep-n').value);
+    if (!Number.isInteger(Number(n)) || n < 2n || n > 1200n) {
+      $('#flt-sweep-result').innerHTML = '<div class="status bad"><div>Enter n between 2 and 1200.</div></div>';
+      return;
+    }
+    const prime = isPrime(n);
+    const passes = [];
+    const fails = [];
+    const skipped = [];
+    for (let a = 2n; a < n && a < 200n; a += 1n) {
+      if (gcd(a, n) !== 1n) { skipped.push(a); continue; }
+      const r = modPow(a, n - 1n, n);
+      if (r === 1n) passes.push(a); else fails.push({ a, r });
+    }
+
+    let html = '<div class="status info"><div><b>Sweeping n = ' + n + '</b> — separately verified: '
+      + (prime ? '<span class="tag good">truly prime</span>' : `<span class="tag bad">composite = ${factorizeText(n)}</span>`);
+    html += '</div></div>';
+    html += '<table class="data"><tr><th>category</th><th>count</th><th>bases</th></tr>';
+    html += `<tr><td class="pass">pass (a^${n - 1n} ≡ 1)</td><td>${passes.length}</td><td>${passes.length <= 30 ? passes.join(', ') : `${passes.slice(0, 20).join(', ')} … (${passes.length} total)`}</td></tr>`;
+    html += `<tr><td class="fail">fail (a^${n - 1n} ≢ 1)</td><td>${fails.length}</td><td>${fails.length <= 30 ? fails.map((f) => `${f.a}→${f.r}`).join(', ') : `${fails.slice(0, 15).map((f) => `${f.a}→${f.r}`).join(', ')} … (${fails.length} total)`}</td></tr>`;
+    html += `<tr><td class="dim">skipped (gcd &gt; 1)</td><td>${skipped.length}</td><td>${skipped.length <= 20 ? skipped.join(', ') : `${skipped.slice(0, 15).join(', ')} … (${skipped.length} total)`}</td></tr>`;
+    html += '</table>';
+
+    if (fails.length === 0 && !prime) {
+      html += `<div class="status warn"><div><b>⚠ Every coprime base passed FLT, yet ${n} is composite (${factorizeText(n)})!</b> ${n <= 1200n ? 'This is a Carmichael number — ' : ''}exactly why FLT cannot prove primality.</div></div>`;
+    } else if (fails.length === 0 && prime) {
+      html += '<div class="status good"><div>All coprime bases give 1, which is <b>consistent</b> with n being prime. FLT alone would only tell us "n <em>might</em> be prime".</div></div>';
+    } else if (fails.length > 0) {
+      html += `<div class="status good"><div>${fails.length} base${fails.length > 1 ? 's' : ''} gave a result ≠ 1. FLT conclusively proves ${n} is composite.${skipped.length ? ` Additionally, ${skipped.length} base${skipped.length > 1 ? 's' : ''} share a factor with ${n}.` : ''}</div></div>`;
+    }
+    $('#flt-sweep-result').innerHTML = html;
+  }
+
+  /* ── flt division ────────────────────────────────────────────────── */
+
+  function renderDivSection() {
+    const dp = BigInt($('#div-p').value || '0');
+    const da = BigInt($('#div-a').value || '0');
+    const db = BigInt($('#div-b').value || '0');
+
+    $('#div-formula-eq').innerHTML = isPrime(dp)
+      ? `a ÷ b = a × b<sup>p−2</sup><span class="op">⇒</span>a × b<sup>${dp - 2n}</sup> mod ${dp}`
+      : `<span class="op">requires prime p — ${dp} is not prime</span>`;
+
+    const out = $('#div-trace-output');
+    const chain = $('#div-power-chain');
+    const cmp = $('#div-comparison');
+
+    if (dp < 2n || da < 0n || db < 0n) {
+      out.innerHTML = '<div class="status bad"><div>Enter a prime p and non-negative a, b.</div></div>';
+      chain.innerHTML = '';
+      cmp.innerHTML = '';
+      return;
+    }
+
+    const ma = mod(da, dp);
+    const mb = mod(db, dp);
+
+    if (mb === 0n) {
+      out.innerHTML = '<div class="status bad"><div>b = 0: division by zero is undefined. <code>inverse_mul(0, p)</code> would return 0.</div></div>';
+      chain.innerHTML = '';
+      cmp.innerHTML = '';
+      return;
+    }
+
+    const exp = dp - 2n;
+    const inv = modPow(mb, exp, dp);
+    const result = mod(ma * inv, dp);
+
+    out.innerHTML = `<div class="status info"><div>
+      <b>step 1 — reduce:</b> a = ${ma}, b = ${mb}<br>
+      <b>step 2 — invert by Fermat:</b> b⁻¹ = b<sup>p−2</sup> = ${mb}<sup>${exp}</sup> mod ${dp}<br>
+      <b>step 3 — compute:</b> ${mb}<sup>${exp}</sup> mod ${dp} = <b>${inv}</b><br>
+      <b>step 4 — multiply:</b> a ÷ b = ${ma} × ${inv} = ${ma * inv} mod ${dp} = <b>${result}</b><br>
+      <b>verify:</b> b × result = ${mb} × ${result} = ${mb * result} mod ${dp} = <b>${mod(mb * result, dp)}</b> ${mod(mb * result, dp) === ma ? '= a ✓' : '≠ a ✗'}
+    </div></div>`;
+
+    if (exp <= 30n && exp >= 1n) {
+      let c = '<div class="chain">';
+      let v = 1n;
+      for (let k = 1n; k <= exp; k += 1n) {
+        v = mod(v * mb, dp);
+        c += `<div class="pw${k === exp ? ' hi' : ''}" style="--h:${Math.round((Number(v) / Number(dp)) * 300)}">${mb}^${k}=${v}</div>`;
+      }
+      const vp1 = mod(v * mb, dp);
+      c += `<div class="pw" style="--h:${Math.round((Number(vp1) / Number(dp)) * 300)};border-color:var(--accent);border-width:2px">${mb}^${dp - 1n}=${vp1}</div>`;
+      c += '</div>';
+      c += `<p class="cap" style="margin-top:8px">The highlighted chip is b<sup>p−2</sup> = b⁻¹ = ${inv}. The last chip confirms b<sup>p−1</sup> = ${vp1} (must be 1 by FLT).</p>`;
+      chain.innerHTML = c;
+    } else {
+      chain.innerHTML = `<p class="cap">Exponent p − 2 = ${exp} is too large for a step-by-step display.</p>`;
+    }
+
+    let bfInv = null;
+    let bfSteps = 0n;
+    for (let k = 1n; k < dp; k += 1n) {
+      bfSteps += 1n;
+      if (mod(mb * k, dp) === 1n) { bfInv = k; break; }
+    }
+
+    cmp.innerHTML = `<table class="data">
+      <tr><th>method</th><th>b⁻¹ found</th><th>work</th></tr>
+      <tr><td>brute force (try k = 1, 2, …)</td><td>${bfInv}</td><td>${bfSteps} multiplication${bfSteps > 1n ? 's' : ''} + mod checks</td></tr>
+      <tr><td>FLT: b<sup>p−2</sup> mod p <span class="muted">(what the crate does)</span></td><td>${inv}</td><td>${exp} squarings — O(log p)</td></tr>
+    </table>
+    <p class="cap" style="margin-top:8px">Both methods yield b⁻¹ = <b>${inv}</b>. For a small p, brute force can be faster. For a 256-bit p, FLT with fast exponentiation is essential — O(log p) versus O(p).</p>`;
+  }
+
+  /* ── big numbers ─────────────────────────────────────────────────── */
+
+  const bigParse = (s) => {
+    const t = s.replace(/[\s,_]/g, '');
+    return /^\d+$/.test(t) ? BigInt(t) : null;
+  };
+
+  const bigShort = (x, k = 20) => {
+    const s = x.toString();
+    return s.length > 2 * k + 3 ? `${s.slice(0, k)}…${s.slice(-k)} (${s.length} digits)` : s;
+  };
+
+  function renderBigMod() {
+    const N = bigParse($('#bm-n').value);
+    const M = bigParse($('#bm-m').value);
+    const out = $('#bm-out');
+    const dg = $('#bm-digits');
+    if (N === null) { out.innerHTML = '<div class="status bad"><div>N must be a whole number.</div></div>'; dg.innerHTML = ''; return; }
+    if (M === null || M < 2n) { out.innerHTML = '<div class="status bad"><div>m must be a whole number of at least 2.</div></div>'; dg.innerHTML = ''; return; }
+    if ($('#bm-n').value.replace(/\D/g, '').length > 400) { out.innerHTML = '<div class="status bad"><div>Keep N under 400 digits.</div></div>'; dg.innerHTML = ''; return; }
+
+    const s = N.toString();
+    let r = 0n;
+    const rows = [];
+    for (const ch of s) {
+      const v = r * 10n + BigInt(ch);
+      const nr = v % M;
+      rows.push([ch, r, v, nr]);
+      r = nr;
+    }
+    const q = (N - r) / M;
+    const maxV = rows.reduce((t, x) => (x[2] > t ? x[2] : t), 0n);
+
+    out.innerHTML = `<div class="status good"><div>
+      <b>answer:</b> ${bigShort(N)} mod ${bigShort(M)} = <b>${r}</b><br>
+      <b>check:</b> N = q × m + r with q = ${bigShort(q)} and r = ${r}. q × m + r ${q * M + r === N ? '= N ✓' : '≠ N ✗'}
+    </div></div>`;
+
+    const fmt = (x, i) => `<tr><td>${i + 1}</td><td>${x[0]}</td><td>${x[1]} × 10 + ${x[0]} = ${x[2]}</td><td>${x[2]} mod ${M} = <b>${x[3]}</b></td></tr>`;
+    const keep = 10;
+    const tail = 6;
+    let body;
+    if (rows.length > keep + tail + 4) {
+      body = rows.slice(0, keep).map((x, i) => fmt(x, i)).join('')
+        + `<tr><td colspan="4" style="text-align:center;color:var(--fg-faint)">… ${rows.length - keep - tail} more steps, same rule each time …</td></tr>`
+        + rows.slice(rows.length - tail).map((x, i) => fmt(x, rows.length - tail + i)).join('');
+    } else {
+      body = rows.map((x, i) => fmt(x, i)).join('');
+    }
+    dg.innerHTML = `<table class="data"><tr><th>step</th><th>digit</th><th>bring it down</th><th>new r</th></tr>${body}</table>
+      <p class="cap" style="margin-top:8px">The biggest number we ever wrote down was <b>${bigShort(maxV)}</b>, while N has ${s.length} digits. The last r is the answer: <b>${r}</b>.</p>`;
+  }
+
+  function renderBigPow() {
+    const box = $('#bp-out');
+    const B = bigParse($('#bp-a').value);
+    const E = bigParse($('#bp-e').value);
+    const M = bigParse($('#bm-m').value);
+    if (M === null || M < 2n) { box.innerHTML = '<div class="status bad"><div>Set a valid modulus m above.</div></div>'; return; }
+    if (B === null) { box.innerHTML = '<div class="status bad"><div>a must be a whole number.</div></div>'; return; }
+    if (E === null) { box.innerHTML = '<div class="status bad"><div>e must be a whole number.</div></div>'; return; }
+
+    const a0 = mod(B, M);
+    const bits = E.toString(2);
+    let r = 1n % M;
+    const rows = [];
+    for (let i = 0; i < bits.length; i += 1) {
+      const sq = mod(r * r, M);
+      const one = bits[i] === '1';
+      const nr = one ? mod(sq * a0, M) : sq;
+      rows.push([bits[i], r, sq, one, nr]);
+      r = nr;
+    }
+    const ones = [...bits].filter((c) => c === '1').length;
+    const fmt = (x) => `<tr><td>${x[0]}</td><td>${x[1]}² mod ${M} = ${x[2]}</td><td>${x[3] ? `${x[2]} × ${a0} mod ${M} = ${x[4]}` : 'skip (bit is 0)'}</td><td><b>${x[4]}</b></td></tr>`;
+
+    let h = `<div class="status good"><div>
+      <b>answer:</b> ${bigShort(B)}<sup>${bigShort(E)}</sup> mod ${bigShort(M)} = <b>${r}</b><br>
+      <b>binary of e:</b> ${bits.length > 64 ? `${bits.slice(0, 32)}…${bits.slice(-16)}` : bits} (${bits.length} bits)<br>
+      <b>work:</b> ${bits.length} squarings + ${ones} multiplications, instead of about ${bigShort(E > 0n ? E - 1n : 0n)} multiplications by repeating a.
+    </div></div>`;
+    h += '<div class="tw"><table class="data"><tr><th>bit</th><th>square</th><th>multiply by a if bit = 1</th><th>result</th></tr>';
+    const keep = 8;
+    const tail = 4;
+    if (rows.length > keep + tail + 4) {
+      h += rows.slice(0, keep).map(fmt).join('')
+        + `<tr><td colspan="4" style="text-align:center;color:var(--fg-faint)">… ${rows.length - keep - tail} more bits, same rule each time …</td></tr>`
+        + rows.slice(rows.length - tail).map(fmt).join('');
+    } else {
+      h += rows.map(fmt).join('');
+    }
+    h += '</table></div>';
+
+    if (isPrime(M) && a0 !== 0n) {
+      const X = E % (M - 1n);
+      const y = modPow(a0, X, M);
+      h += `<div class="status good" style="margin-top:12px"><div><b>Shortcut from FLT:</b> m = ${M} is prime and a is not a multiple of m, so a<sup>m−1</sup> ≡ 1. Only e mod (m−1) = <b>${X}</b> matters: ${a0}<sup>${X}</sup> mod ${M} = <b>${y}</b> ${y === r ? '✓ same answer' : '✗ mismatch'}.</div></div>`;
+    }
+    box.innerHTML = h;
+  }
+
+  const renderBig = () => { renderBigMod(); renderBigPow(); };
+
+  /* ── render ──────────────────────────────────────────────────────── */
+
+  function render() {
+    const p = state.p;
+
+    $('#ops').innerHTML = Object.entries(OPS)
+      .map(([k, v]) => `<button class="chip" data-op="${k}" aria-pressed="${k === state.op}">${v.label}</button>`)
+      .join('');
+
+    $('#bfield').style.display = (state.op === 'neg' || state.op === 'inv') ? 'none' : '';
+    $('#phint').textContent = isPrime(p) ? 'valid prime — a finite field' : `${p} is not prime — not a field`;
+    $('#phint').className = isPrime(p) ? 'hint' : 'hint warn';
+
+    const out = calc();
+    state.path = out.path;
+
+    $('#eq').innerHTML = out.eq;
+    $('#src').textContent = OPS[state.op].fn;
+    $('#fn-title').textContent = OPS[state.op].fn;
+    $('#msg').innerHTML = out.warn ? `<div class="status bad" style="margin-bottom:0"><div>${out.warn}</div></div>` : '';
+    $('#steps').innerHTML = out.steps.map((st, i) => `<div class="log-step current">
+      <h3>${String(i + 1).padStart(2, '0')} · ${st.title}</h3>
+      <div class="lines">${st.lines.map((l) => `<div class="ln ${l.tone}">${l.s}</div>`).join('')}</div>
+    </div>`).join('');
+
+    $('#clock-cap').innerHTML = isPrime(p)
+      ? `<span class="tag good">field</span> ℤ${p}`
+      : `<span class="tag bad">not a field</span> ℤ${p}`;
+    $('#hop').max = out.path ? String(out.path.count) : '0';
+
+    $('#rs').innerHTML = rsView.html('ecc/src/finite_field.rs', out.region);
+    rsView.reveal('ecc/src/finite_field.rs', out.region);
+
+    renderTable(out);
+    renderFermat();
+    renderDivSection();
+    play();
+  }
+
+  /* ── events ──────────────────────────────────────────────────────── */
+
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.dataset.op) { state.op = t.dataset.op; state.shown = 0; render(); return; }
+    if (t.dataset.sweep) { $('#flt-sweep-n').value = t.dataset.sweep; sweepN(); return; }
+    if (t.dataset.preset) {
+      const name = t.dataset.preset;
+      if (name === 'p11') {
+        state.p = 11n;
+        $('#pin').value = '11';
+        showPrimeProof(11);
+      } else {
+        state.op = name;
+      }
+      state.shown = 0;
+      render();
+      return;
+    }
+    if (t.tagName === 'TD' && t.dataset.i !== undefined) {
+      state.a = BigInt(t.dataset.i);
+      state.b = BigInt(t.dataset.j);
+      $('#ain').value = String(state.a);
+      $('#bin').value = String(state.b);
+      state.shown = 0;
+      render();
+      return;
+    }
+    if (t.id === 'rp') { play(); return; }
+    if (t.id === 'theme') { toggleTheme(); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'TD') e.target.click();
+  });
+
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : cur === 'light' ? 'dark' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ecc-theme', next); } catch (err) { /* ignore */ }
+  }
+
+  try {
+    const saved = localStorage.getItem('ecc-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (err) { /* ignore */ }
+
+  function bindNumber(id, key, max) {
+    const el = $(id);
+    el.addEventListener('input', () => {
+      const v = el.value.trim();
+      if (!/^-?\d+$/.test(v)) return;
+      const n = BigInt(v);
+      if (n < 0n || n > max) {
+        $('#err').textContent = `Enter a whole number from 0 to ${max}. The Rust asserts that the operands are reduced.`;
+        return;
+      }
+      $('#err').textContent = '';
+      state[key] = n;
+      state.shown = 0;
+      render();
+    });
+    el.addEventListener('change', () => { el.value = String(state[key]); });
+  }
+
+  bindNumber('#ain', 'a', 40n);
+  bindNumber('#bin', 'b', 40n);
+
+  $('#pin').addEventListener('input', () => {
+    const v = $('#pin').value.trim();
+    if (!/^\d+$/.test(v)) return;
+    const n = BigInt(v);
+    if (n < 2n || n > 31n) {
+      $('#err').textContent = 'Enter a whole number from 2 to 31.';
+      showPrimeProof(Number(v));
+      return;
+    }
+    $('#err').textContent = '';
+    state.p = n;
+    showPrimeProof(Number(n));
+    state.shown = 0;
+    render();
+  });
+
+  $('#hop').addEventListener('input', (e) => {
+    clearInterval(state.timer);
+    state.shown = Number(e.target.value);
+    drawClock();
+  });
+
+  $('#flt-test-btn').addEventListener('click', testFLT);
+  ['#flt-n', '#flt-a'].forEach((id) => $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') testFLT(); }));
+  $('#flt-sweep-btn').addEventListener('click', sweepN);
+  $('#flt-sweep-n').addEventListener('keydown', (e) => { if (e.key === 'Enter') sweepN(); });
+
+  $('#div-compute-btn').addEventListener('click', renderDivSection);
+  ['#div-a', '#div-b', '#div-p'].forEach((id) => $(id).addEventListener('input', renderDivSection));
+
+  ['#bm-n', '#bm-m', '#bp-a', '#bp-e'].forEach((id) => $(id).addEventListener('input', renderBig));
+  $('#bm-rand').addEventListener('click', () => {
+    let s = String(1 + Math.floor(Math.random() * 9));
+    for (let i = 1; i < 60; i += 1) s += Math.floor(Math.random() * 10);
+    $('#bm-n').value = s;
+    renderBig();
+  });
+  $('#bm-usep').addEventListener('click', () => {
+    $('#bm-m').value = String(state.p);
+    renderBig();
+  });
+
+  /* boot */
+  showPrimeProof(7);
+  render();
+  renderBig();
+}());
+</script>
+</body>
+</html>

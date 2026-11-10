@@ -1,0 +1,17 @@
+[package]
+name = "ecdsa"
+description = "Elliptic Curve Digital Signature Algorithm built on the `ecc` library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ecc = { path = "../ecc" }
+num-bigint = { version = "0.4", features = ["rand"] }
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+
+[[bin]]
+name = "ecdsa"
+path = "src/main.rs"
