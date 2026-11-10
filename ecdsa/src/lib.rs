@@ -142,39 +142,14 @@ impl Ecdsa {
 }
 
 /// The secp256k1 curve used by Bitcoin: `y^2 = x^3 + 7 (mod p)`.
+///
+/// The parameters live in the `ecc` crate, so that `ecdsa` and `schnorr` share
+/// one source of truth.
 pub fn secp256k1() -> Ecdsa {
-    let p = BigUint::parse_bytes(
-        b"fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
-        16,
-    )
-    .expect("Could not convert p");
-
-    let order = BigUint::parse_bytes(
-        b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
-        16,
-    )
-    .expect("Could not convert order");
-
-    let gx = BigUint::parse_bytes(
-        b"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-        16,
-    )
-    .expect("Could not convert gx");
-
-    let gy = BigUint::parse_bytes(
-        b"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8",
-        16,
-    )
-    .expect("Could not convert gy");
-
     Ecdsa {
-        curve: EllipticCurve {
-            a: BigUint::from(0u32),
-            b: BigUint::from(7u32),
-            p,
-        },
-        generator: Point::Coordinate(gx, gy),
-        order,
+        curve: ecc::secp256k1::curve(),
+        generator: ecc::secp256k1::generator(),
+        order: ecc::secp256k1::order(),
     }
 }
 

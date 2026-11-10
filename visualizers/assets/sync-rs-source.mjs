@@ -64,6 +64,18 @@ const TARGETS = [
       small_curve: 'pub fn small_curve(',
     },
   },
+  {
+    file: 'schnorr/src/lib.rs',
+    symbols: {
+      public_key: 'pub fn public_key(',
+      sign: 'pub fn sign(',
+      sign_once: 'fn sign_once(',
+      verify: 'pub fn verify(',
+      lift_x: 'pub fn lift_x(',
+      tagged_hash: 'pub fn tagged_hash(',
+      has_even_y: 'pub fn has_even_y(',
+    },
+  },
 ];
 
 /**

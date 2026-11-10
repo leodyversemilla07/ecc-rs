@@ -2,10 +2,10 @@
 /**
  * Publishes the visualizers to GitHub Pages.
  *
- * The site is served from the `gh-pages` branch, whose root is a copy of this
- * folder. GitHub Pages is configured (Settings → Pages) to build from that
- * branch with the `/` folder as the site root, so the hub page is served from
- * the root of the project site:
+ * The site is served from the repository's `gh-pages` branch, whose root is a
+ * copy of this folder. GitHub Pages is configured (Settings → Pages) to build
+ * from that branch with the `/` folder as the site root, so the hub page is
+ * served from the root of the project site:
  *
  *     https://leodyversemilla07.github.io/ecc-rs/
  *
@@ -13,13 +13,13 @@
  *
  *     node visualizers/assets/publish.mjs
  *
- * It rebuilds the `gh-pages` branch from the current contents of this folder
- * and force-pushes it. The branch history is irrelevant — only its tree is
- * served — so it is rebuilt from scratch every time.
+ * The branch is built with git's plumbing commands against a temporary index,
+ * so the working tree is never touched: uncommitted work, staged changes and
+ * the current branch all stay exactly as they were.
  */
 
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,56 +35,51 @@ function fail(message) {
   process.exit(1);
 }
 
-if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') {
-  fail('Run this from the main branch.');
-}
-
-// ── stage what the site should contain ──
+// ── what the site should contain ──
 // Everything in `visualizers/`, plus a `.nojekyll` at the root so GitHub Pages
 // serves the files verbatim instead of running them through Jekyll.
-//
-// The copy lives outside the directories the build is about to replace, so
-// the source is never destroyed by its own build.
 const staging = join(repoRoot, 'target', 'pages-staging');
 rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 
 for (const entry of readdirSync(visualizers)) {
-  if (entry === '.nojekyll') continue;
   const from = join(visualizers, entry);
   if (statSync(from).isDirectory()) cpSync(from, join(staging, entry), { recursive: true });
   else cpSync(from, join(staging, entry));
 }
 cpSync(join(visualizers, '.nojekyll'), join(staging, '.nojekyll'));
 
-// ── rebuild the branch from scratch ──
-git('checkout', '--orphan', 'pages-build');
-git('rm', '-rq', '--cached', '.');
+// ── build the branch without touching the working tree ──
+const indexFile = join(repoRoot, 'target', 'pages-index');
+rmSync(indexFile, { force: true });
 
-// Empty the worktree of everything the site should not contain.
-for (const entry of readdirSync(repoRoot)) {
-  if (entry === '.git' || entry === 'target') continue;
-  rmSync(join(repoRoot, entry), { recursive: true, force: true });
+const env = { ...process.env, GIT_INDEX_FILE: indexFile };
+const gitDir = join(repoRoot, '.git');
+
+execFileSync(
+  'git',
+  [`--git-dir=${gitDir}`, `--work-tree=${staging}`, 'add', '-A', '.'],
+  { cwd: staging, env, encoding: 'utf8' },
+);
+
+const tree = execFileSync('git', ['write-tree'], { cwd: repoRoot, env, encoding: 'utf8' }).trim();
+
+let parent;
+try {
+  parent = git('rev-parse', branch);
+} catch {
+  parent = undefined;
 }
 
-// Copy the site in.
-for (const entry of readdirSync(staging)) {
-  const from = join(staging, entry);
-  const to = join(repoRoot, entry);
-  if (statSync(from).isDirectory()) cpSync(from, to, { recursive: true });
-  else cpSync(from, to);
-}
+const commitArgs = ['commit-tree', tree, '-m', 'Publish the visualizers'];
+if (parent) commitArgs.splice(2, 0, '-p', parent);
 
-// Keep the build output out of the commit.
-writeFileSync(join(repoRoot, '.gitignore'), '/target\n');
+const commit = execFileSync('git', commitArgs, { cwd: repoRoot, encoding: 'utf8' }).trim();
 
-git('add', '-A');
-git('commit', '-q', '-m', 'Publish the visualizers');
-git('branch', '-f', branch, 'pages-build');
-git('checkout', '--force', 'main');
-git('branch', '-D', 'pages-build');
+git('update-ref', `refs/heads/${branch}`, commit);
 git('push', '--force', 'origin', branch);
 
+rmSync(indexFile, { force: true });
 rmSync(staging, { recursive: true, force: true });
 
 console.log(`\n✓ Published ${branch} — https://leodyversemilla07.github.io/ecc-rs/\n`);

@@ -19,6 +19,7 @@
 pub mod elliptic_curve;
 pub mod finite_field;
 pub mod point;
+pub mod secp256k1;
 
 pub use elliptic_curve::EllipticCurve;
 pub use finite_field::FiniteField;

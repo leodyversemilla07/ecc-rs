@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Schnorr signatures (BIP-340) — ecc-rs visualizers</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>◈</text></svg>">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand"><b>ECC-RS</b></div>
+  <nav class="crumbs"><a href="index.html">visualizers</a> / <em>schnorr</em></nav>
+  <button class="chip ghost theme-btn" id="theme" type="button">theme</button>
+</header>
+
+<section class="title">
+  <p class="kicker">schnorr/src/lib.rs · BIP-340</p>
+  <h1>Schnorr signatures</h1>
+  <p class="lead">
+    BIP-340 Schnorr signatures, the scheme Bitcoin's Taproot uses. Where ECDSA hides a
+    nonce inside a pair of numbers, Schnorr keeps everything in one line:
+    <b>s·G = R + e·P</b>. This page walks through signing and verification, using the same
+    rules the crate uses.
+  </p>
+</section>
+
+<div class="frame">
+  <!-- ── control rail ──────────────────────────────────────────────── -->
+  <aside class="rail">
+    <section class="rail-group">
+      <h2>curve</h2>
+      <div class="chips">
+        <button class="chip" data-curve="small" aria-pressed="true">teaching</button>
+        <button class="chip" data-curve="secp" aria-pressed="false">secp256k1</button>
+      </div>
+      <span class="hint" id="curvehint"></span>
+    </section>
+
+    <section class="rail-group">
+      <h2>inputs</h2>
+      <label class="fld">
+        <span>secret key d</span>
+        <input id="din" type="number" min="1" step="1" value="7">
+        <span class="hint" id="dhint"></span>
+      </label>
+      <label class="fld">
+        <span>message</span>
+        <input id="msg" type="text" autocomplete="off" value="Alice sends 1 BTC to Bob">
+        <span class="hint">hashed straight into the challenge</span>
+      </label>
+      <label class="fld">
+        <span>aux rand</span>
+        <input id="auxin" type="text" autocomplete="off" value="0000000000000000000000000000000000000000000000000000000000000000">
+        <span class="hint">32 bytes of extra randomness</span>
+      </label>
+    </section>
+
+    <section class="rail-group">
+      <h2>actions</h2>
+      <div class="chips">
+        <button class="chip" data-act="rand-d">random d</button>
+        <button class="chip" data-act="rand-aux">random aux</button>
+        <button class="chip" data-act="sign">sign</button>
+        <button class="chip" data-act="verify">verify</button>
+        <button class="chip" data-act="tamper-msg">tamper msg</button>
+        <button class="chip" data-act="tamper-sig">tamper sig</button>
+      </div>
+    </section>
+
+    <div class="err" id="err" role="alert"></div>
+  </aside>
+
+  <!-- ── canvas ───────────────────────────────────────────────────── -->
+  <main class="canvas">
+
+    <div class="readout">
+      <div class="expr" id="eq"></div>
+      <div class="src" id="src"></div>
+    </div>
+    <div id="msgbox"></div>
+
+    <div class="split">
+      <section class="panel figure">
+        <div class="panel-h"><span id="curveTitle">the teaching curve</span><span class="note" id="pointCount"></span></div>
+        <svg id="grid" viewBox="0 0 460 460" role="img" aria-label="Points on the curve used in the signature"></svg>
+        <div class="legend" id="legend"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h"><span>stage</span><span class="note" id="progress"></span></div>
+        <div class="chips" style="margin-bottom:12px">
+          <button class="chip" data-stage="key" aria-pressed="true">1 · key generation</button>
+          <button class="chip" data-stage="sign" aria-pressed="false">2 · sign</button>
+          <button class="chip" data-stage="verify" aria-pressed="false">3 · verify</button>
+        </div>
+        <div class="log log--reveal" id="steps"></div>
+        <div class="stepper">
+          <button class="chip" id="prev" type="button">← prev</button>
+          <button class="chip" id="next" type="button">next →</button>
+          <input id="range" type="range" min="0" max="1" value="0" aria-label="Walkthrough step">
+          <button class="chip" id="play" type="button">play</button>
+          <span class="count" id="count"></span>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-h"><span>the signature</span><span class="note">64 bytes, always</span></div>
+      <div class="grid-2">
+        <div>
+          <h3>public key — 32 bytes</h3>
+          <p class="cap">Only the <b>x-coordinate</b> of the public point is published. The
+          y-coordinate is implied: of the two points with that x, BIP-340 always means the one
+          with the <b>even</b> y. That is what <code>lift_x</code> recovers during verification.</p>
+          <div class="readout" style="border-left-color:var(--cyan);margin-top:8px">
+            <div class="expr" id="pk-readout" style="font-size:.85rem"></div>
+          </div>
+        </div>
+        <div>
+          <h3>signature — 64 bytes</h3>
+          <p class="cap"><code>r</code> is the x-coordinate of the nonce point <code>R</code>, and
+          <code>s</code> is the scalar. Together they satisfy <code>s·G = R + e·P</code>.</p>
+          <div class="readout" style="border-left-color:var(--rose);margin-top:8px">
+            <div class="expr" id="sig-readout" style="font-size:.85rem"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>why verification works</span><span class="note">the algebra</span></div>
+      <p class="cap">Signing produces <code>s = k + e·d</code> and <code>R = k·G</code>. Multiplying the
+      first by the generator:</p>
+      <div class="readout" style="border-left-color:var(--accent);margin:12px 0">
+        <div class="expr">s·G = (k + e·d)·G = k·G + e·(d·G) = R + e·P</div>
+      </div>
+      <p class="cap">The verifier knows <code>R</code> (it is in the signature), <code>P</code> (the public
+      key) and <code>e</code> (a hash of the message), so it can rebuild the right-hand side and check
+      that the x-coordinate matches. The secret key never appears — and because the equation is
+      <em>additive</em>, several signers can produce one signature together, which is what MuSig and
+      threshold signatures do.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>the equation, checked</span><span class="note">s·G vs R + e·P</span></div>
+      <div class="tw" id="equation-table"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>schnorr vs ecdsa</span><span class="note">same curve, different shape</span></div>
+      <table class="data">
+        <tr><th></th><th>ECDSA</th><th>Schnorr (BIP-340)</th></tr>
+        <tr><td>signature size</td><td>70–72 bytes (DER)</td><td class="pass">64 bytes, fixed</td></tr>
+        <tr><td>public key size</td><td>33 bytes (compressed)</td><td class="pass">32 bytes (x-only)</td></tr>
+        <tr><td>the equation</td><td>r = x(kG), s = k⁻¹(z + rd)</td><td>s·G = R + e·P</td></tr>
+        <tr><td>malleable</td><td class="fail">yes: (r, n−s) also verifies</td><td class="pass">no</td></tr>
+        <tr><td>provably secure</td><td class="fail">no</td><td class="pass">yes, under the discrete log assumption</td></tr>
+        <tr><td>batch verification</td><td>awkward</td><td class="pass">natural — the equation is linear</td></tr>
+        <tr><td>key prefixing</td><td>yes</td><td class="pass">yes — the public key is in the challenge</td></tr>
+      </table>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>rust source</span><span class="note">schnorr/src/lib.rs</span></div>
+      <div class="listing" id="rs"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><span>notes</span></div>
+      <div class="grid-2">
+        <div>
+          <h3>the nonce is derived, not random</h3>
+          <p class="cap">BIP-340 derives the nonce from the secret key and the message with a
+          tagged hash. That removes the need for an RNG at signing time, but it also means the
+          derivation must never repeat — which is why the auxiliary randomness exists.</p>
+        </div>
+        <div>
+          <h3>tagged hashes</h3>
+          <p class="cap">Every hash is prefixed with <code>SHA256(tag) ‖ SHA256(tag)</code>, so a hash
+          used for the nonce cannot be replayed as the challenge, and a hash from another scheme
+          cannot be reused here.</p>
+        </div>
+        <div>
+          <h3>the even-y convention</h3>
+          <p class="cap">Signing negates the secret key when the public point has an odd
+          y-coordinate, and the nonce when <code>R</code> does. Everything published therefore has
+          an even y, and <code>lift_x</code> can reconstruct the point unambiguously.</p>
+        </div>
+        <div>
+          <h3>the nonce must never repeat</h3>
+          <p class="cap">Reusing a nonce gives away the private key. Because the nonce is derived
+          from the secret key, BIP-340 mixes in auxiliary randomness and hashes the public key into
+          the derivation, so a mistake in one signature cannot leak the key for another.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>ecc-rs</span>
+  <a href="index.html">← visualizers</a>
+  <a href="ecdsa.html">ECDSA ←</a>
+  <a href="https://github.com/leodyversemilla07/ecc-rs">source</a>
+</footer>
+
+<script src="assets/rust-source.js"></script>
+<script src="assets/ecc.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const {
+    ec, schnorr, rsView, mod, modPow, pt, ptText, ptCode, IDENTITY,
+  } = ECC;
+
+  const $ = (s) => document.querySelector(s);
+
+  const state = {
+    curveKey: 'small',
+    stage: 'key',
+    step: 0,
+    timer: null,
+    message: 'Alice sends 1 BTC to Bob',
+    aux: new Uint8Array(32),
+    d: 7n,
+    hash: null,
+    signature: null,
+    publicKey: null,
+    keySteps: [],
+    signSteps: [],
+    verifySteps: [],
+    verifyResult: null,
+    verifyPanic: null,
+  };
+
+  /** The step index that was on screen last, so the new one can animate in. */
+  let revealedStep = -1;
+
+  const params = () => (state.curveKey === 'small' ? schnorr.teaching : schnorr.secp256k1);
+
+  function showError(msg) { $('#err').textContent = msg || ''; }
+
+  function hex(bytes) {
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function parseHex(text) {
+    const clean = text.trim().replace(/[^0-9a-fA-F]/g, '');
+    if (clean.length === 0) return new Uint8Array(32);
+    const padded = clean.padStart(64, '0').slice(-64);
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i += 1) out[i] = parseInt(padded.substr(i * 2, 2), 16);
+    return out;
+  }
+
+  const shortHex = (bytes) => {
+    const h = hex(bytes);
+    return `${h.slice(0, 16)}…${h.slice(-16)}`;
+  };
+
+  /* ── the three stages ───────────────────────────────────────────────── */
+
+  function buildKeySteps() {
+    const p = params();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+
+    push('the curve', [
+      line('code', 'Schnorr::secp256k1()  // or Schnorr::teaching()'),
+      line('calc', `a = ${p.curve.a}, b = ${p.curve.b}, p = ${p.curve.p}`),
+      line('calc', `generator G = (${p.generator.x}, ${p.generator.y})`),
+      line('calc', `order n = ${p.order}`),
+      line('dim', 'the order must be prime, so that the inverse of the nonce exists'),
+    ]);
+
+    push('P = d·G', [
+      line('code', 'let p_point = self.curve.multiply(secret_key, &self.generator);'),
+      line('calc', `d = ${state.d}`),
+      line('calc', `P = (${p.generator.x}, ${p.generator.y}) · ${state.d} = the public point`),
+    ]);
+
+    push('the public key is only the x-coordinate', [
+      line('code', 'Point::Coordinate(x, _) => x'),
+      line('calc', `pk = x(P) = ${state.publicKey}`),
+      line('dim', '32 bytes instead of 33: the y-coordinate is implied to be the even one'),
+    ]);
+
+    push('why that is unambiguous', [
+      line('code', 'let y = c^((p+1)/4) mod p;  // then pick the even root'),
+      line('dim', 'every valid x-coordinate has exactly two points on the curve, and BIP-340 always means the one with an even y'),
+      line('dim', 'the verifier calls lift_x to get it back'),
+    ]);
+
+    return steps;
+  }
+
+  function buildSignSteps() {
+    const p = params();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+
+    const pPoint = ec.multiply(p.curve, state.d, p.generator);
+    const pX = pPoint.x;
+    const even = schnorr.hasEvenY(pPoint);
+    const d = even ? state.d : mod(p.order - state.d, p.order);
+
+    push('the public point, and whether to negate the key', [
+      line('code', 'let p_point = self.curve.multiply(secret_key, &self.generator);'),
+      line('code', 'let d = d\' if has_even_y(P), otherwise let d = n - d\';'),
+      line('calc', `P = (${pPoint.x}, ${pPoint.y})   has_even_y(P) = ${even}`),
+      line('calc', `d = ${d}`),
+      line('dim', 'the point we sign with is always the even-y one, so the public key means exactly one point'),
+    ]);
+
+    push('t = bytes(d) XOR hash_aux(a)', [
+      line('code', 'let t = bytes(d) XOR hash_aux(a);'),
+      line('calc', `bytes(d) = ${hex(ECC.encode32(d))}`),
+      line('calc', `hash_aux(a) = ${shortHex(ECC.taggedHash('BIP0340/aux', [state.aux]))}`),
+      line('dim', 'the auxiliary randomness is hashed with its own tag, so it cannot be confused with anything else'),
+    ]);
+
+    push('rand = hash_nonce(t ‖ bytes(P) ‖ m)', [
+      line('code', 'let rand = hash_nonce(t || bytes(P) || m);'),
+      line('calc', `bytes(P) = ${hex(ECC.encode32(pX))}`),
+      line('calc', `hash_nonce(...) = ${shortHex(ECC.taggedHash('BIP0340/nonce', [state.t, ECC.encode32(pX), new TextEncoder().encode(state.message)]))}`),
+      line('dim', 'hashing the public key in means a mistake in the key cannot leak the secret key'),
+    ]);
+
+    push('k\' = int(rand) mod n', [
+      line('code', 'let k_prime = int(rand) mod n;'),
+      line('calc', `k' = ${state.kPrime}`),
+      line('dim', 'on secp256k1 the chance of a zero nonce is 2⁻²⁵⁶; on a small curve it is 1 in n, so the crate retries'),
+    ]);
+
+    push('R = k\'·G, negated when its y is odd', [
+      line('code', 'let k = k\' if has_even_y(R), otherwise let k = n - k\';'),
+      line('calc', `R = (${state.rPoint.x}, ${state.rPoint.y})   has_even_y(R) = ${schnorr.hasEvenY(state.rPoint)}`),
+      line('calc', `k = ${state.k}`),
+      line('dim', 'the nonce point that goes into the signature always has an even y-coordinate'),
+    ]);
+
+    push('e = int(hash_challenge(bytes(R) ‖ bytes(P) ‖ m)) mod n', [
+      line('code', 'let e = int(hash_challenge(bytes(R) || bytes(P) || m)) mod n;'),
+      line('calc', `e = ${state.e}`),
+      line('dim', 'the challenge commits to the message, the public key and the nonce — this is the key prefixing that protects against related-key attacks'),
+    ]);
+
+    push('s = (k + e·d) mod n', [
+      line('code', 'let s = (k + e*d) mod n;'),
+      line('calc', `s = (${state.k} + ${state.e}·${d}) mod ${p.order} = ${state.s}`),
+      line('dim', 'one multiplication and one addition — the whole signature is this line'),
+    ]);
+
+    push('sig = bytes(R) ‖ bytes(s)', [
+      line('code', 'let sig = bytes(R) || bytes(s);'),
+      line('ok', `r = x(R) = ${state.rPoint.x},  s = ${state.s}`),
+      line('dim', '64 bytes, always the same length'),
+      line(state.signature ? 'dim' : 'dim', state.signature
+        ? `the signature above was made: (r = ${state.signature.r}, s = ${state.signature.s})`
+        : 'press "sign" to produce it'),
+    ]);
+
+    return steps;
+  }
+
+  function buildVerifySteps() {
+    const p = params();
+    const line = (tone, s) => ({ tone, s });
+    const steps = [];
+    const push = (t, l) => steps.push({ title: t, lines: l });
+
+    if (!state.signature || !state.verifyResult) {
+      push('nothing to verify', [line('dim', 'press "sign" first')]);
+      return steps;
+    }
+
+    const v = state.verifyResult;
+    const pk = state.publicKey;
+
+    push('P = lift_x(int(pk))', [
+      line('code', 'let p_point = self.lift_x(public_key)?;'),
+      line('calc', `pk = ${pk}  →  P = (${v.pPoint.x}, ${v.pPoint.y})`),
+      line('dim', 'the y-coordinate was never published — it is recovered from the x-coordinate, choosing the even root'),
+    ]);
+
+    push('e = int(hash_challenge(bytes(r) ‖ bytes(P) ‖ m)) mod n', [
+      line('code', 'let e = int(hash_challenge(bytes(r) || bytes(P) || m)) mod n;'),
+      line('calc', `e = ${v.e}`),
+      line('dim', 'the verifier recomputes the challenge from the message it was given — this is what makes tampering fail'),
+    ]);
+
+    push('R\' = s·G − e·P', [
+      line('code', 'let r_point = self.curve.add(&s_g, &self.negate(&e_p));'),
+      line('calc', `s·G = (${v.sG.x}, ${v.sG.y})`),
+      line('calc', `e·P = (${v.eP.x}, ${v.eP.y})`),
+      line('calc', `R' = (${v.rPoint.x}, ${v.rPoint.y})`),
+    ]);
+
+    push('the three checks', [
+      line('code', 'fail if is_infinite(R)'),
+      line('code', 'fail if not has_even_y(R)'),
+      line('code', 'fail if x(R) != r'),
+      line(v.valid ? 'ok' : 'bad', v.valid
+        ? `R' is not the infinity ✓  ·  its y is even ✓  ·  x(R') = ${v.rPoint.x} = r ✓`
+        : 'one of the three checks failed'),
+    ]);
+
+    push('result', [
+      line(v.valid ? 'ok' : 'bad', v.valid ? 'the signature is VALID ✓' : 'the signature is INVALID ✗'),
+      line('dim', 'the verifier never needed the secret key or the nonce — only the public key, the message and the signature'),
+    ]);
+
+    return steps;
+  }
+
+  /* ── computing the run ──────────────────────────────────────────────── */
+
+  function computeAll() {
+    const p = params();
+    const line = (tone, s) => ({ tone, s });
+
+    try {
+      state.publicKey = schnorr.publicKey(p, state.d);
+    } catch (error) {
+      state.publicKey = null;
+      state.keySteps = buildKeySteps();
+      state.signSteps = [];
+      state.verifySteps = [];
+      state.verifyResult = null;
+      return;
+    }
+
+    // Mirror the crate's signing so the trace can show every intermediate.
+    // Nothing is signed here: the signature only changes when the reader
+    // presses "sign", so that tampering with the message really does break it.
+    const pPoint = ec.multiply(p.curve, state.d, p.generator);
+    const even = schnorr.hasEvenY(pPoint);
+    const d = even ? state.d : mod(p.order - state.d, p.order);
+
+    const auxHash = ECC.taggedHash('BIP0340/aux', [state.aux]);
+    const dBytes = ECC.encode32(d);
+    const t = new Uint8Array(32);
+    for (let i = 0; i < 32; i += 1) t[i] = dBytes[i] ^ auxHash[i];
+    state.t = t;
+
+    const messageBytes = new TextEncoder().encode(state.message);
+    const rand = ECC.taggedHash('BIP0340/nonce', [t, ECC.encode32(pPoint.x), messageBytes]);
+    const kPrime = mod(BigInt(`0x${hex(rand)}`), p.order);
+    state.kPrime = kPrime;
+
+    const rPoint = ec.multiply(p.curve, kPrime, p.generator);
+    state.rPoint = rPoint;
+    state.k = schnorr.hasEvenY(rPoint) ? kPrime : mod(p.order - kPrime, p.order);
+
+    const challenge = ECC.taggedHash('BIP0340/challenge', [
+      ECC.encode32(rPoint.x), ECC.encode32(pPoint.x), messageBytes,
+    ]);
+    state.e = mod(BigInt(`0x${hex(challenge)}`), p.order);
+    state.s = mod(state.k + ECC.ff.mul(state.e, d, p.order), p.order);
+
+    state.keySteps = buildKeySteps();
+    state.signSteps = buildSignSteps();
+
+    // The verification is checked against the signature that was actually
+    // made, and the message as it stands now.
+    if (state.signature) {
+      try {
+        const e = BigInt(`0x${hex(ECC.taggedHash('BIP0340/challenge', [
+          ECC.encode32(state.signature.r), ECC.encode32(pPoint.x), messageBytes,
+        ]))}`) % p.order;
+
+        const sG = ec.multiply(p.curve, state.signature.s, p.generator);
+        const eP = ec.multiply(p.curve, e, pPoint);
+        const negEP = schnorr.negate(p, eP);
+        const rCalc = ECC.ptEq(sG, negEP) ? ec.double(p.curve, sG) : ec.add(p.curve, sG, negEP);
+
+        const valid = schnorr.verify(p, state.publicKey, messageBytes, state.signature);
+        state.verifyResult = { valid, pPoint, e, sG, eP, rPoint: rCalc };
+        state.verifyPanic = null;
+        state.verifySteps = buildVerifySteps();
+      } catch (error) {
+        state.verifyResult = null;
+        state.verifyPanic = error.message || String(error);
+        state.verifySteps = [];
+      }
+    } else {
+      state.verifyResult = null;
+      state.verifySteps = [];
+    }
+  }
+
+  /* ── grid ───────────────────────────────────────────────────────────── */
+
+  function renderGrid() {
+    const p = params();
+    if (state.curveKey !== 'small') {
+      $('#grid').innerHTML = '<text x="230" y="215" text-anchor="middle" class="g-text" style="font-size:12px">secp256k1 has no small grid to draw —</text>'
+        + '<text x="230" y="236" text-anchor="middle" class="g-text" style="font-size:12px">its field has 2²⁵⁶ elements.</text>';
+      return;
+    }
+
+    const field = Number(p.curve.p);
+    const W = 460;
+    const pad = 34;
+    const size = W - pad * 2;
+    const step = size / (field - 1);
+    const X = (x) => pad + Number(x) * step;
+    const Y = (y) => pad + (field - 1 - Number(y)) * step;
+
+    let s = '';
+    for (let i = 0; i < field; i += 1) {
+      s += `<line x1="${X(i)}" y1="${pad}" x2="${X(i)}" y2="${pad + size}" class="g-line"/>`;
+      s += `<line x1="${pad}" y1="${Y(i)}" x2="${pad + size}" y2="${Y(i)}" class="g-line"/>`;
+    }
+    s += `<rect x="${pad}" y="${pad}" width="${size}" height="${size}" fill="none" class="g-axis"/>`;
+
+    const ticks = new Set([0, field - 1]);
+    for (let i = 1; i < field - 1; i += 1) ticks.add(i);
+    for (const t of ticks) {
+      s += `<text x="${X(t)}" y="${pad + size + 16}" text-anchor="middle" class="g-text">${t}</text>`;
+      s += `<text x="${pad - 8}" y="${Y(t) + 4}" text-anchor="end" class="g-text">${t}</text>`;
+    }
+    s += `<text x="${pad + size}" y="${pad - 11}" text-anchor="end" class="g-text">x →</text>`;
+    s += `<text x="${pad - 8}" y="${pad - 11}" text-anchor="start" class="g-text">y →</text>`;
+
+    const points = ec.enumerate(p.curve);
+    const dotR = Math.max(2, Math.min(4, (step * 0.2)));
+    for (const q of points) s += `<circle cx="${X(q.x)}" cy="${Y(q.y)}" r="${dotR}" class="g-dot"/>`;
+
+    const mr = Math.max(5.5, Math.min(9, (step * 0.34)));
+    const marks = [];
+    const add = (q, label, cls) => {
+      if (!q || q === IDENTITY) return;
+      marks.push({ q, label, cls });
+    };
+
+    add(p.generator, 'G', 'g');
+    if (state.publicKey !== null) {
+      add(ec.multiply(p.curve, state.d, p.generator), 'P', 'p');
+    }
+    if (state.rPoint) add(state.rPoint, 'R', 'r');
+    if (state.verifyResult) add(state.verifyResult.rPoint, "R'", 'u1');
+
+    const placed = [];
+    for (const m of marks) {
+      let dx = mr + 6;
+      let dy = -mr - 3;
+      while (placed.some((o) => Math.abs(o.x - X(m.q.x)) < 24 && Math.abs(o.y - (Y(m.q.y) + dy)) < 13)) {
+        dy += 13;
+        if (dy > mr + 20) { dy = -mr - 3; dx += 16; }
+      }
+      placed.push({ x: X(m.q.x), y: Y(m.q.y) + dy });
+      s += `<circle cx="${X(m.q.x)}" cy="${Y(m.q.y)}" r="${mr}" class="mk ${m.cls}"/>`;
+      s += `<text x="${X(m.q.x) + dx}" y="${Y(m.q.y) + dy}" class="mk-label ${m.cls}">${m.label}</text>`;
+    }
+
+    $('#grid').innerHTML = s;
+    $('#pointCount').textContent = `${points.length} affine points`;
+  }
+
+  function renderLegend() {
+    const items = [
+      '<span><i class="swatch g"></i> G (generator)</span>',
+      '<span><i class="swatch p"></i> P (public point)</span>',
+    ];
+    if (state.rPoint) items.push('<span><i class="swatch r"></i> R (nonce point)</span>');
+    if (state.verifyResult) items.push('<span><i class="swatch q"></i> R\' (rebuilt by the verifier)</span>');
+    $('#legend').innerHTML = items.join('');
+  }
+
+  /* ── render ─────────────────────────────────────────────────────────── */
+
+  function renderMsgBox() {
+    const box = $('#msgbox');
+    if (state.verifyPanic) {
+      box.innerHTML = `<div class="status bad" style="margin-bottom:0"><div><b>The program panicked ✗</b> ${state.verifyPanic}</div></div>`;
+      return;
+    }
+    if (state.verifyResult) {
+      box.innerHTML = state.verifyResult.valid
+        ? '<div class="status good" style="margin-bottom:0"><div><b>Valid signature ✓</b> The verifier rebuilt R\' = s·G − e·P and found x(R\') = r.</div></div>'
+        : '<div class="status bad" style="margin-bottom:0"><div><b>Invalid signature ✗</b> The message, the signature or the public key was tampered with.</div></div>';
+      return;
+    }
+    if (state.signature) {
+      box.innerHTML = `<div class="status info" style="margin-bottom:0"><div><b>Signed.</b> (r, s) = (${state.signature.r}, ${state.signature.s}) — press <b>verify</b> to check it.</div></div>`;
+      return;
+    }
+    box.innerHTML = '<div class="status info" style="margin-bottom:0"><div><b>Not signed yet.</b> The public key is already computed.</div></div>';
+  }
+
+  function renderEquationTable() {
+    const p = params();
+    const v = state.verifyResult;
+    if (!v) {
+      $('#equation-table').innerHTML = '<p class="cap">Sign and verify to see the equation checked.</p>';
+      return;
+    }
+
+    const show = (q) => (q === IDENTITY ? '∞' : `(${q.x}, ${q.y})`);
+    const left = ec.multiply(p.curve, v.e, v.pPoint);
+    const sum = ec.add(p.curve, v.rPoint, left);
+
+    let html = '<table class="data"><tr><th>term</th><th>value</th></tr>';
+    html += `<tr><td>s·G</td><td>${show(v.sG)}</td></tr>`;
+    html += `<tr><td>R</td><td>${show(state.rPoint)}</td></tr>`;
+    html += `<tr><td>e·P</td><td>${show(left)}</td></tr>`;
+    html += `<tr><td>R + e·P</td><td>${show(sum)}</td></tr>`;
+    html += '<tr><td>s·G = R + e·P ?</td><td>';
+    html += (v.sG.x === sum.x && v.sG.y === sum.y)
+      ? '<span class="pass">yes — the points are equal</span>'
+      : '<span class="fail">no</span>';
+    html += '</td></tr></table>';
+    $('#equation-table').innerHTML = html;
+  }
+
+  function render() {
+    const p = params();
+
+    document.querySelectorAll('[data-curve]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.curve === state.curveKey));
+    });
+    document.querySelectorAll('[data-stage]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.stage === state.stage));
+    });
+
+    $('#curvehint').textContent = state.curveKey === 'small'
+      ? 'y² = x³ + 10 (mod 19)'
+      : 'y² = x³ + 7';
+    $('#dhint').textContent = state.curveKey === 'small'
+      ? `1 ≤ d ≤ n−1 = ${p.order - 1n}`
+      : '1 ≤ d ≤ n−1 (256 bits)';
+    $('#curveTitle').textContent = state.curveKey === 'small' ? 'the teaching curve' : 'secp256k1';
+
+    computeAll();
+
+    const steps = state.stage === 'key' ? state.keySteps : state.stage === 'sign' ? state.signSteps : state.verifySteps;
+    const eqs = {
+      key: 'pk<span class="op">=</span>x(d·G)<span class="op">·</span>32 bytes',
+      sign: 's<span class="op">=</span>(k + e·d) mod n<span class="op">·</span>sig<span class="op">=</span>R.x ‖ s',
+      verify: 'R\'<span class="op">=</span>s·G − e·P<span class="op">·</span>valid ⇔ x(R\') = r',
+    };
+    $('#eq').innerHTML = eqs[state.stage];
+    $('#src').textContent = `schnorr/src/lib.rs · ${state.stage}`;
+
+    state.step = Math.max(0, Math.min(state.step, steps.length - 1));
+    $('#progress').textContent = `step ${state.step + 1} of ${steps.length}`;
+    $('#steps').innerHTML = steps.map((st, i) => {
+      const cls = i === state.step ? 'current' : i < state.step ? 'done' : 'future';
+      const incoming = i === state.step && i !== revealedStep ? ' incoming' : '';
+      if (i === state.step) revealedStep = i;
+      return `<div class="log-step ${cls}${incoming}">
+        <h3>${String(i + 1).padStart(2, '0')} · ${st.title}</h3>
+        <div class="lines">${st.lines.map((l) => `<div class="ln ${l.tone}">${l.s}</div>`).join('')}</div>
+      </div>`;
+    }).join('');
+
+    $('#range').max = String(steps.length - 1);
+    $('#range').value = String(state.step);
+    $('#count').textContent = `${state.step + 1} / ${steps.length}`;
+    $('#prev').disabled = state.step === 0;
+    $('#next').disabled = state.step >= steps.length - 1;
+    $('#play').textContent = state.timer ? 'pause' : 'play';
+
+    $('#pk-readout').textContent = state.publicKey === null
+      ? '—'
+      : shortHex(ECC.encode32(state.publicKey));
+    $('#sig-readout').textContent = state.signature
+      ? shortHex(ECC.encode32(state.signature.r)) + ' ‖ ' + shortHex(ECC.encode32(state.signature.s))
+      : '—';
+
+    const regions = { key: ['public_key'], sign: ['sign', 'sign_once'], verify: ['verify'] };
+    $('#rs').innerHTML = rsView.html('schnorr/src/lib.rs', regions[state.stage]);
+    rsView.reveal('schnorr/src/lib.rs', regions[state.stage]);
+
+    renderGrid();
+    renderLegend();
+    renderMsgBox();
+    renderEquationTable();
+  }
+
+  /* ── playback ───────────────────────────────────────────────────────── */
+
+  function stopPlay() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    const b = $('#play');
+    if (b) b.textContent = 'play';
+  }
+
+  function togglePlay() {
+    if (state.timer) { stopPlay(); render(); return; }
+    const steps = state.stage === 'key' ? state.keySteps : state.stage === 'sign' ? state.signSteps : state.verifySteps;
+    if (state.step >= steps.length - 1) state.step = 0;
+    state.timer = setInterval(() => {
+      if (state.step < steps.length - 1) {
+        state.step += 1;
+        render();
+      } else {
+        stopPlay();
+        render();
+      }
+    }, 1100);
+    render();
+  }
+
+  /* ── events ─────────────────────────────────────────────────────────── */
+
+  document.querySelectorAll('[data-curve]').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.curveKey = b.dataset.curve;
+      const p = params();
+      state.d = mod(state.d, p.order) || 1n;
+      $('#din').value = String(state.d);
+      state.signature = null;
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      state.stage = 'key';
+      state.step = 0;
+      showError('');
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-stage]').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.stage = b.dataset.stage;
+      state.step = 0;
+      stopPlay();
+      render();
+    });
+  });
+
+  $('#msg').addEventListener('input', (e) => {
+    state.message = e.target.value;
+    state.verifyResult = null;
+    state.verifyPanic = null;
+    state.verifySteps = [];
+    render();
+  });
+
+  $('#auxin').addEventListener('input', (e) => {
+    state.aux = parseHex(e.target.value);
+    state.verifyResult = null;
+    state.verifyPanic = null;
+    render();
+  });
+
+  $('#din').addEventListener('input', (e) => {
+    const v = e.target.value.trim();
+    if (!/^\d+$/.test(v)) return;
+    state.d = BigInt(v);
+    state.signature = null;
+    state.verifyResult = null;
+    state.verifyPanic = null;
+    render();
+  });
+
+  const randomBytes = (count) => {
+    const out = new Uint8Array(count);
+    if (globalThis.crypto && globalThis.crypto.getRandomValues) globalThis.crypto.getRandomValues(out);
+    else for (let i = 0; i < count; i += 1) out[i] = Math.floor(Math.random() * 256);
+    return out;
+  };
+
+  document.addEventListener('click', (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+
+    if (act === 'rand-d') {
+      const p = params();
+      let v = 1n;
+      while (v === 1n) v = mod(BigInt(`0x${hex(randomBytes(32))}`), p.order) || 1n;
+      state.d = v;
+      $('#din').value = String(v);
+      state.signature = null;
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      render();
+      return;
+    }
+    if (act === 'rand-aux') {
+      state.aux = randomBytes(32);
+      $('#auxin').value = hex(state.aux);
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      render();
+      return;
+    }
+    if (act === 'sign') {
+      try {
+        state.signature = schnorr.sign(params(), state.d, new TextEncoder().encode(state.message), state.aux);
+        state.verifyPanic = null;
+        state.stage = 'sign';
+        state.step = 0;
+        showError('');
+      } catch (error) {
+        showError(error.message || String(error));
+      }
+      render();
+      return;
+    }
+    if (act === 'verify') {
+      if (!state.signature) { showError('Sign first.'); return; }
+      state.stage = 'verify';
+      state.step = 0;
+      render();
+      return;
+    }
+    if (act === 'tamper-msg') {
+      $('#msg').value = `${state.message} (tampered)`;
+      state.message = $('#msg').value;
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      render();
+      return;
+    }
+    if (act === 'tamper-sig') {
+      if (!state.signature) { showError('Sign first.'); return; }
+      const p = params();
+      state.signature = {
+        r: mod(state.signature.r + 1n, p.order),
+        s: state.signature.s,
+      };
+      state.verifyResult = null;
+      state.verifyPanic = null;
+      render();
+    }
+  });
+
+  $('#prev').addEventListener('click', () => { stopPlay(); state.step = Math.max(0, state.step - 1); render(); });
+  $('#next').addEventListener('click', () => { stopPlay(); state.step += 1; render(); });
+  $('#range').addEventListener('input', (e) => { stopPlay(); state.step = Number(e.target.value); render(); });
+  $('#play').addEventListener('click', togglePlay);
+  $('#theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ecc-theme', next); } catch (err) { /* ignore */ }
+  });
+
+  try {
+    const saved = localStorage.getItem('ecc-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (err) { /* ignore */ }
+
+  render();
+}());
+</script>
+</body>
+</html>

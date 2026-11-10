@@ -41,7 +41,11 @@
         </div>
         <div class="check">
           <div class="name"><code>ecdsa/src/lib.rs</code></div>
-          <div class="detail">signatures — the application</div>
+          <div class="detail">signatures — ECDSA</div>
+        </div>
+        <div class="check">
+          <div class="name"><code>schnorr/src/lib.rs</code></div>
+          <div class="detail">signatures — Schnorr (BIP-340)</div>
         </div>
       </div>
     </section>
@@ -94,6 +98,14 @@
           secp256k1 — with the proof that verification works, and a demo of what reusing a nonce does
           to your private key.</p>
           <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecdsa/src/lib.rs</p>
+        </a>
+
+        <a class="panel" href="schnorr.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
+          <div class="panel-h"><span>4 · Schnorr (BIP-340)</span><span class="note">open →</span></div>
+          <p class="cap">The signature scheme Bitcoin's Taproot uses. Everything lives in one line,
+          <code>s·G = R + e·P</code> — which is what makes it non-malleable, provably secure and
+          possible to produce with several signers at once.</p>
+          <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">schnorr/src/lib.rs</p>
         </a>
 
       </div>

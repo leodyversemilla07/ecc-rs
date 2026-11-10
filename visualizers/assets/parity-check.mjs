@@ -28,7 +28,7 @@ const repoRoot = join(here, '..', '..');
 
 globalThis.window = globalThis;
 await import(pathToFileURL(join(repoRoot, 'visualizers/assets/ecc.js')).href);
-const { ff, ec, ecdsa, mod, modPow } = globalThis.ECC;
+const { ff, ec, ecdsa, schnorr, mod, modPow } = globalThis.ECC;
 
 const runRust = process.argv.includes('--run-rust');
 
@@ -131,6 +131,44 @@ for (const [p, a, b] of curves) {
   }
 }
 
+{
+  // BIP-340 Schnorr, on the teaching curve and on secp256k1.
+  const messages = ['', 'a', 'Alice sends 1 BTC to Bob'];
+
+  for (const [name, params] of [['teaching', schnorr.teaching], ['secp256k1', schnorr.secp256k1]]) {
+    const keys = name === 'teaching' ? Array.from({ length: 18 }, (_, i) => i + 1) : [1, 2, 3, 7, 42, 12345];
+
+    for (const d of keys) {
+      const secretKey = B(d);
+      let publicKey;
+      try {
+        publicKey = schnorr.publicKey(params, secretKey);
+      } catch (e) {
+        js.push(`schnorr ${name} ${d} pk PANIC`);
+        continue;
+      }
+      js.push(`schnorr ${name} ${d} pk ${publicKey}`);
+
+      messages.forEach((message, mi) => {
+        let signature;
+        try {
+          signature = schnorr.sign(params, secretKey, message, null);
+        } catch (e) {
+          js.push(`schnorr ${name} ${d} ${mi} sig PANIC`);
+          return;
+        }
+        js.push(`schnorr ${name} ${d} ${mi} sig ${signature.r} ${signature.s}`);
+
+        const valid = schnorr.verify(params, publicKey, message, signature);
+        const tampered = schnorr.verify(params, publicKey, 'different', signature);
+        const broken = { r: mod(signature.r + 1n, params.order), s: signature.s };
+        const brokenValid = schnorr.verify(params, publicKey, message, broken);
+        js.push(`schnorr ${name} ${d} ${mi} ver ${valid} ${tampered} ${brokenValid}`);
+      });
+    }
+  }
+}
+
 /* ── diff ─────────────────────────────────────────────────────────────── */
 
 function compare(label, rustPath, jsLines) {
@@ -157,12 +195,14 @@ function compare(label, rustPath, jsLines) {
 
 let failures = 0;
 
-// The two dumps are separate files, so split the JS lines on the same markers.
-const eccJs = js.filter((l) => !l.startsWith('ecdsa '));
+// The three dumps are separate files, so split the JS lines the same way.
+const eccJs = js.filter((l) => !l.startsWith('ecdsa ') && !l.startsWith('schnorr '));
 const ecdsaJs = js.filter((l) => l.startsWith('ecdsa '));
+const schnorrJs = js.filter((l) => l.startsWith('schnorr '));
 
 failures += compare('ecc', join(repoRoot, 'target', 'parity-dump-ecc.txt'), eccJs);
 failures += compare('ecdsa', join(repoRoot, 'target', 'parity-dump-ecdsa.txt'), ecdsaJs);
+failures += compare('schnorr', join(repoRoot, 'target', 'parity-dump-schnorr.txt'), schnorrJs);
 
 console.log(failures === 0 ? '\nALL OK — the visualizer matches the crate.' : `\n${failures} MISMATCHES`);
 process.exit(failures === 0 ? 0 : 1);

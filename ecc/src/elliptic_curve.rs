@@ -122,7 +122,16 @@ impl EllipticCurve {
             t = self.double(&t);
 
             if d.bit(i) {
-                t = self.add(&t, c);
+                // `add` refuses to add a point to itself, and the ladder can
+                // land on exactly that: when `2 * prefix ≡ 1 (mod order)` the
+                // doubled accumulator is the base point again. The value the
+                // ladder wants is `t + c`, which for `t == c` is `2c` — the
+                // double of the point we are holding.
+                t = if t == *c {
+                    self.double(&t)
+                } else {
+                    self.add(&t, c)
+                };
             }
         }
 
@@ -310,6 +319,47 @@ mod tests {
             curve.multiply(&BigUint::from(19u32), &generator()),
             Point::Identity
         );
+    }
+
+    /// The double-and-add ladder can produce a point equal to the base point
+    /// again, when `2 * prefix ≡ 1 (mod order)`. Adding it to itself must not
+    /// panic: the ladder wants the double.
+    #[test]
+    fn test_multiply_does_not_add_a_point_to_itself() {
+        let curve = teaching_curve();
+        let g = generator();
+
+        // The order of G is 19, so 21 * G = 2 * G. While doubling the
+        // accumulator for 21 = 10101₂ the ladder reaches 10 * G, doubles it to
+        // 20 * G = G, and then wants to add G to itself.
+        assert_eq!(
+            curve.multiply(&BigUint::from(21u32), &g),
+            curve.multiply(&BigUint::from(2u32), &g)
+        );
+    }
+
+    /// Every scalar must work, not just the ones the lessons happened to use.
+    #[test]
+    fn test_multiply_is_consistent_with_repeated_addition() {
+        let curve = teaching_curve();
+        let g = generator();
+
+        // Walk the multiples of G one at a time with the group law. Adding a
+        // point to itself is a doubling, which is why the walk uses `double`
+        // there — `add` deliberately refuses that case.
+        let mut acc = Point::Identity;
+        for k in 0u32..40 {
+            assert_eq!(
+                curve.multiply(&BigUint::from(k), &g),
+                acc,
+                "multiply({k}, G) disagrees with repeated addition"
+            );
+            acc = if acc == g {
+                curve.double(&g)
+            } else {
+                curve.add(&acc, &g)
+            };
+        }
     }
 
     #[test]

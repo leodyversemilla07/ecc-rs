@@ -1,0 +1,20 @@
+[package]
+name = "schnorr"
+description = "BIP-340 Schnorr signatures for secp256k1, built on the `ecc` library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ecc = { path = "../ecc" }
+num-bigint = "0.4"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+
+[[bin]]
+name = "schnorr"
+path = "src/main.rs"
+
+[dev-dependencies]
+ecc = { path = "../ecc" }

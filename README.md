@@ -16,12 +16,17 @@ ecc/                 library crate: the elliptic curve "pyramid"
   src/point.rs       Point::{Coordinate, Identity}
   src/finite_field.rs FiniteField (add/sub/mul/div/inverse_*)
   src/elliptic_curve.rs EllipticCurve (on_curve/add/double/multiply)
+  src/secp256k1.rs   the standard secp256k1 parameters
   examples/          parity dump used to check the visualizers
 ecdsa/               application crate built on `ecc`
   src/lib.rs         Ecdsa (key generation, sign, verify) + secp256k1
   src/main.rs        command-line demonstration
   examples/          parity dump used to check the visualizers
-visualizers/         static site: three interactive pages (no build step)
+schnorr/             BIP-340 Schnorr signatures built on `ecc`
+  src/lib.rs         Schnorr (public_key/sign/verify/lift_x)
+  src/main.rs        command-line demonstration
+  examples/          parity dump used to check the visualizers
+visualizers/         static site: four interactive pages (no build step)
 ```
 
 | Layer | Transcript lessons |
@@ -41,11 +46,15 @@ cargo run -p ecdsa
 
 # real 256-bit secp256k1 curve (use --release)
 cargo run --release -p ecdsa -- --secp256k1 "Bob sends two bitcoins to Alice"
+
+# BIP-340 Schnorr signatures
+cargo run -p schnorr
+cargo run --release -p schnorr -- --secp256k1 "Bob sends two bitcoins to Alice"
 ```
 
 ## Visualizers
 
-Three interactive pages show the mathematics behind the code. They are plain
+Four interactive pages show the mathematics behind the code. They are plain
 HTML with no build step.
 
 **Live site:** <https://leodyversemilla07.github.io/ecc-rs/>
@@ -55,6 +64,7 @@ HTML with no build step.
 | [Finite field operations](visualizers/finite-field.html) | `FiniteField` — add/sub/mul/div, both inverses, Fermat's little theorem, modulo for big numbers |
 | [Elliptic curve operations](visualizers/point-arithmetic.html) | `EllipticCurve` — `on_curve`, `add`, `double`, `multiply`, the double-and-add ladder |
 | [ECDSA](visualizers/ecdsa.html) | `Ecdsa` — key generation, signing, verification, and why verification works |
+| [Schnorr](visualizers/schnorr.html) | `Schnorr` — BIP-340 signing and verification, the x-only public key, the even-y convention |
 
 Each page mirrors the Rust line by line: the code shown next to the animation
 is generated from the real files in this repository, and the arithmetic is a
@@ -67,6 +77,7 @@ node visualizers/assets/sync-rs-source.mjs
 # check the JavaScript against the crate (run the Rust dumps first)
 cargo run --release --example parity_dump_ecc -p ecc
 cargo run --release --example parity_dump_ecdsa -p ecdsa
+cargo run --release --example parity_dump_schnorr -p schnorr
 node visualizers/assets/parity-check.mjs
 
 # publish the pages to GitHub Pages
@@ -80,6 +91,7 @@ See [`visualizers/README.md`](visualizers/README.md) for details.
 ```sh
 cargo test                                  # fast unit tests
 cargo test --release -- --ignored           # 256-bit secp256k1 stress tests
+cargo test --release -p schnorr --test vectors   # the official BIP-340 vectors
 ```
 
 The secp256k1 tests are ignored by default because scalar multiplication
@@ -97,3 +109,12 @@ performs 256-bit modular inverses and is slow in a debug build.
   points differ. On a curve as small as the teaching one, `u₁·G` and `u₂·Q`
   coincide for roughly one nonce in nineteen, and the crate panics instead of
   returning false. The ECDSA visualizer reproduces this.
+- `EllipticCurve::multiply` handles the case where the double-and-add ladder
+  lands on the base point again (`2 · prefix ≡ 1 (mod order)`), where the
+  result is a doubling rather than an addition.
+- The `schnorr` crate implements BIP-340 and is checked against the official
+  test vectors. Its `sign` retries with a counter mixed into the auxiliary
+  randomness when the derived nonce is zero — a case BIP-340 says should fail,
+  but which happens once in `n` signatures on a small curve.
+- The secp256k1 parameters live in `ecc/src/secp256k1.rs` so that both
+  `ecdsa` and `schnorr` share one source of truth.

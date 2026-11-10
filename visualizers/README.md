@@ -15,6 +15,7 @@ from the root of the project site.
 | [`finite-field.html`](finite-field.html) | `ecc/src/finite_field.rs` — the arithmetic on F<sub>p</sub> |
 | [`point-arithmetic.html`](point-arithmetic.html) | `ecc/src/elliptic_curve.rs` and `ecc/src/point.rs` — the group law |
 | [`ecdsa.html`](ecdsa.html) | `ecdsa/src/lib.rs` — key generation, signing, verification |
+| [`schnorr.html`](schnorr.html) | `schnorr/src/lib.rs` — BIP-340 Schnorr signatures |
 
 There is no build step. Open any page in a browser, or serve the folder:
 
@@ -52,13 +53,13 @@ to find has moved.
 
 **2. The arithmetic is a re-implementation, not a lookup table.**
 [`assets/ecc.js`](assets/ecc.js) re-implements `FiniteField`,
-`EllipticCurve` and `Ecdsa` in JavaScript, including their `assert!`s — a
-failing assertion throws a `RustPanic`, which the pages render as "the program
-panics here". All field arithmetic uses `BigInt`, so the 256-bit secp256k1
-parameters are exact.
+`EllipticCurve`, `Ecdsa` and BIP-340 Schnorr in JavaScript, including their
+`assert!`s — a failing assertion throws a `RustPanic`, which the pages render
+as "the program panics here". All field arithmetic uses `BigInt`, so the
+256-bit secp256k1 parameters are exact.
 
 **3. The re-implementation is checked against the crate.**
-Two Rust examples print the crate's answers for a large set of inputs:
+Three Rust examples print the crate's answers for a large set of inputs:
 
 - [`ecc/examples/parity_dump_ecc.rs`](../ecc/examples/parity_dump_ecc.rs) — every
   field operation for eleven primes, every point addition and doubling for
@@ -66,6 +67,9 @@ Two Rust examples print the crate's answers for a large set of inputs:
 - [`ecdsa/examples/parity_dump_ecdsa.rs`](../ecdsa/examples/parity_dump_ecdsa.rs) —
   every key pair and nonce on the teaching curve, including tampered
   verifications.
+- [`schnorr/examples/parity_dump_schnorr.rs`](../schnorr/examples/parity_dump_schnorr.rs) —
+  every secret key on the teaching curve and a sample on secp256k1, with the
+  public key, the signature and three verification results each.
 
 Together that is more than 300,000 cases, compared panic-for-panic: where the
 Rust code panics on invalid input, the JavaScript throws, and the diff expects
@@ -80,6 +84,7 @@ in JavaScript and diffs the two:
 ```sh
 cargo run --release --example parity_dump_ecc -p ecc
 cargo run --release --example parity_dump_ecdsa -p ecdsa
+cargo run --release --example parity_dump_schnorr -p schnorr
 node visualizers/assets/parity-check.mjs
 ```
 
@@ -101,7 +106,8 @@ visualizers/
   index.html              hub page
   finite-field.html       F_p arithmetic
   point-arithmetic.html   the group law
-  ecdsa.html              signatures
+  ecdsa.html              ECDSA
+  schnorr.html            Schnorr (BIP-340)
   .nojekyll               tells GitHub Pages to serve the files verbatim
   assets/
     app.css               the design system

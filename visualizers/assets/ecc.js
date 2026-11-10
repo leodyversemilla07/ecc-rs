@@ -254,7 +254,13 @@
       const bits = d.toString(2).length;
       for (let i = bits - 2; i >= 0; i -= 1) {
         t = ec.double(curve, t);
-        if ((d >> BigInt(i)) & 1n) t = ec.add(curve, t, c);
+        if ((d >> BigInt(i)) & 1n) {
+          // `add` refuses to add a point to itself, and the ladder can land
+          // on exactly that: when `2 * prefix ≡ 1 (mod order)` the doubled
+          // accumulator is the base point again. The value the ladder wants is
+          // `t + c`, which for `t == c` is `2c` — the double we are holding.
+          t = ptEq(t, c) ? ec.double(curve, t) : ec.add(curve, t, c);
+        }
       }
       return t;
     },
@@ -747,7 +753,12 @@
 
   /** SHA-256 of a UTF-8 string; returns a 32-byte Uint8Array. */
   function sha256(text) {
-    const bytes = new TextEncoder().encode(text);
+    return sha256Bytes(new TextEncoder().encode(text));
+  }
+
+  /** SHA-256 of raw bytes; returns a 32-byte Uint8Array. */
+  function sha256Bytes(input) {
+    const bytes = input;
     const len = bytes.length;
     const withOne = len + 1;
     const padLen = (56 - (withOne % 64) + 64) % 64;
@@ -1033,22 +1044,28 @@
       const data = rsView.file(file);
       if (!data) return null;
       if (!region) return null;
-      if (Array.isArray(region)) return region;
-      const found = data.regions[region];
-      return found || null;
+      // A region may be a single symbol name, a [start, end] line range, or a
+      // list of either — the list is used when several items should light up.
+      const names = Array.isArray(region) ? region : [region];
+      const spans = [];
+      for (const name of names) {
+        const span = Array.isArray(name) ? name : data.regions[name];
+        if (span) spans.push(span);
+      }
+      return spans.length ? spans : null;
     },
 
     html(file, region) {
       const data = rsView.file(file);
       if (!data) {
         return '<p class="cap">The Rust source snapshot is missing. Run '
-          + '<code>node docs/visualizers/assets/sync-rs-source.mjs</code>.</p>';
+          + '<code>node visualizers/assets/sync-rs-source.mjs</code>.</p>';
       }
-      const span = rsView.resolve(file, region);
+      const spans = rsView.resolve(file, region);
       const out = [];
       for (let i = 0; i < data.lines.length; i += 1) {
         const n = i + 1;
-        const hl = span && n >= span[0] && n <= span[1];
+        const hl = spans && spans.some((span) => n >= span[0] && n <= span[1]);
         out.push(
           `<div class="lst-line${hl ? ' hl' : ''}"><span class="n">${n}</span>`
           + `<span>${escapeHtml(data.lines[i])}</span></div>`,
@@ -1063,8 +1080,6 @@
      * would often sit below the fold.
      */
     reveal(file, region) {
-      const span = rsView.resolve(file, region);
-      if (!span) return;
       const panel = document.querySelector('#rs');
       if (!panel) return;
       const target = panel.querySelector('.lst-line.hl');
@@ -1080,6 +1095,233 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
   }
+
+  /* ── BIP-340 Schnorr signatures ────────────────────────────────────── */
+
+  /**
+   * A tagged hash: SHA256(SHA256(tag) ‖ SHA256(tag) ‖ data). The tag keeps a
+   * hash used in one context from being valid in another.
+   */
+  function taggedHash(tag, parts) {
+    const tagBytes = new TextEncoder().encode(tag);
+    const tagHash = sha256Bytes(tagBytes);
+
+    let total = 0;
+    for (const part of parts) total += part.length;
+
+    const buffer = new Uint8Array(64 + total);
+    buffer.set(tagHash, 0);
+    buffer.set(tagHash, 32);
+
+    let offset = 64;
+    for (const part of parts) {
+      buffer.set(part, offset);
+      offset += part.length;
+    }
+
+    return sha256Bytes(buffer);
+  }
+
+  /** The 32-byte big-endian encoding of a number. */
+  function encode32(value) {
+    const out = new Uint8Array(32);
+    let v = value;
+    for (let i = 31; i >= 0; i -= 1) {
+      out[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    return out;
+  }
+
+  /** The 32-byte big-endian encoding of a hex string. */
+  function hexToBytes(hex) {
+    const out = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < out.length; i += 1) {
+      out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return out;
+  }
+
+  function bytesToHex(bytes) {
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const schnorr = {
+    /** The small curve the visualizer draws: y² = x³ + 10 (mod 19). */
+    teaching: {
+      curve: { p: 19n, a: 0n, b: 10n },
+      generator: { x: 1n, y: 12n },
+      order: 19n,
+    },
+
+    /** secp256k1, the curve BIP-340 is defined for. */
+    secp256k1: {
+      curve: {
+        p: BigInt('0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f'),
+        a: 0n,
+        b: 7n,
+      },
+      generator: {
+        x: BigInt('0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'),
+        y: BigInt('0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8'),
+      },
+      order: BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'),
+    },
+
+    /** Whether the point's y-coordinate is even. */
+    hasEvenY(point) {
+      return point !== IDENTITY && point.y % 2n === 0n;
+    },
+
+    /** The negation of a point: the same x, the opposite y. */
+    negate(params, point) {
+      if (point === IDENTITY) return IDENTITY;
+      return pt(point.x, mod(params.curve.p - point.y, params.curve.p));
+    },
+
+    /**
+     * Recovers the point with the given x-coordinate, choosing the even
+     * y-coordinate. This is BIP-340's `lift_x`.
+     */
+    liftX(params, x) {
+      const p = params.curve.p;
+      if (x >= p) return null;
+
+      const x3 = modPow(x, 3n, p);
+      const ax = mod(x * params.curve.a, p);
+      const c = mod(x3 + ax + params.curve.b, p);
+
+      // y = c^((p+1)/4) mod p — valid because p = 3 (mod 4)
+      const exponent = (p + 1n) / 4n;
+      const y = modPow(c, exponent, p);
+      if (modPow(y, 2n, p) !== c) return null;
+
+      return pt(x, y % 2n === 0n ? y : mod(p - y, p));
+    },
+
+    /** The public key: the x-coordinate of d·G. */
+    publicKey(params, secretKey) {
+      const order = params.order;
+      if (secretKey === 0n || secretKey >= order) throw new RustPanic('the secret key must be in 1 … n−1');
+      const point = ec.multiply(params.curve, secretKey, params.generator);
+      if (point === IDENTITY) throw new RustPanic('the secret key must be in 1 … n−1');
+      return point.x;
+    },
+
+    /**
+     * Signs a message.
+     *
+     * BIP-340 says to fail when the derived nonce is zero. On secp256k1 that
+     * never happens in practice; on a small curve it happens once in n
+     * signatures, so we retry with a counter mixed into the auxiliary
+     * randomness. The first attempt uses the auxiliary randomness exactly as
+     * given.
+     */
+    sign(params, secretKey, message, aux) {
+      const baseAux = aux || new Uint8Array(32);
+      const messageBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const attemptAux = baseAux.slice();
+        const counter = new Uint8Array(4);
+        new DataView(counter.buffer).setUint32(0, attempt, false);
+        for (let i = 0; i < 4; i += 1) attemptAux[28 + i] ^= counter[i];
+
+        try {
+          return schnorr.signOnce(params, secretKey, messageBytes, attemptAux);
+        } catch (error) {
+          if (error && error.nonceIsZero) continue;
+          throw error;
+        }
+      }
+      throw new RustPanic('the derived nonce was zero');
+    },
+
+    /** One signing attempt with fixed auxiliary randomness. */
+    signOnce(params, secretKey, message, aux) {
+      const n = params.order;
+      const p = params.curve.p;
+      if (secretKey === 0n || secretKey >= n) throw new RustPanic('the secret key must be in 1 … n−1');
+
+      const pPoint = ec.multiply(params.curve, secretKey, params.generator);
+      if (pPoint === IDENTITY) throw new RustPanic('the secret key must be in 1 … n−1');
+      const pX = pPoint.x;
+
+      // The secret key is negated when the public point has an odd y.
+      const d = schnorr.hasEvenY(pPoint) ? secretKey : mod(n - secretKey, n);
+
+      // t = bytes(d) XOR hash_aux(a)
+      const auxHash = taggedHash('BIP0340/aux', [aux]);
+      const t = new Uint8Array(32);
+      const dBytes = encode32(d);
+      for (let i = 0; i < 32; i += 1) t[i] = dBytes[i] ^ auxHash[i];
+
+      // rand = hash_nonce(t ‖ bytes(P) ‖ m)
+      const rand = taggedHash('BIP0340/nonce', [t, encode32(pX), message]);
+
+      const kPrime = mod(BigInt('0x' + bytesToHex(rand)), n);
+      if (kPrime === 0n) {
+        const error = new RustPanic('the derived nonce was zero');
+        error.nonceIsZero = true;
+        throw error;
+      }
+
+      const rPoint = ec.multiply(params.curve, kPrime, params.generator);
+      if (rPoint === IDENTITY) {
+        const error = new RustPanic('the derived nonce was zero');
+        error.nonceIsZero = true;
+        throw error;
+      }
+      const rX = rPoint.x;
+      const k = schnorr.hasEvenY(rPoint) ? kPrime : mod(n - kPrime, n);
+
+      // e = int(hash_challenge(bytes(R) ‖ bytes(P) ‖ m)) mod n
+      const challenge = taggedHash('BIP0340/challenge', [encode32(rX), encode32(pX), message]);
+      const e = mod(BigInt('0x' + bytesToHex(challenge)), n);
+
+      const s = mod(k + ff.mul(e, d, n), n);
+      const signature = { r: rX, s };
+
+      // The signer checks its own work.
+      if (!schnorr.verify(params, pX, message, signature)) {
+        throw new RustPanic('the signature did not verify');
+      }
+
+      void p;
+      return signature;
+    },
+
+    /** Verifies a signature. */
+    verify(params, publicKey, message, signature) {
+      const p = params.curve.p;
+      const n = params.order;
+      const messageBytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
+
+      const pPoint = schnorr.liftX(params, publicKey);
+      if (pPoint === null) return false;
+      const pX = pPoint.x;
+
+      if (signature.r >= p || signature.s >= n) return false;
+
+      const challenge = taggedHash('BIP0340/challenge', [encode32(signature.r), encode32(pX), messageBytes]);
+      const e = mod(BigInt('0x' + bytesToHex(challenge)), n);
+
+      const sG = ec.multiply(params.curve, signature.s, params.generator);
+      const eP = ec.multiply(params.curve, e, pPoint);
+      const negEP = schnorr.negate(params, eP);
+
+      // `EllipticCurve::add` refuses to add a point to itself, and here the
+      // two terms can be equal: when s·G = −e·P the sum is a doubling, not
+      // an error. When they are reflections instead, `add` returns the
+      // identity and the signature simply fails to verify.
+      const rPoint = ptEq(sG, negEP)
+        ? ec.double(params.curve, sG)
+        : ec.add(params.curve, sG, negEP);
+
+      if (rPoint === IDENTITY) return false;
+      return schnorr.hasEvenY(rPoint) && rPoint.x === signature.r;
+    },
+  };
 
   global.ECC = {
     mod,
@@ -1103,8 +1345,13 @@
     traceDouble,
     ecdsa,
     sha256,
+    sha256Bytes,
     bytesToHex,
     hexToBigInt,
+    taggedHash,
+    encode32,
+    hexToBytes,
+    schnorr,
     rsView,
     escapeHtml,
   };
