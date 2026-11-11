@@ -144,17 +144,19 @@
           <p class="cap"><code>FiniteField::inverse_mul</code> — one <code>modpow</code>, using
           <a href="#fermat">Fermat's little theorem</a>. Requires a <b>prime</b> p and a non-zero
           c; the crate does not check either.</p>
-          <p class="cap" style="margin-top:8px"><b>Where does it come from?</b> Start from the
-          multiplication above: <code>a × b ≡ (a · b) mod p</code>. The multiplicative inverse
-          of <code>c</code> is the <code>b</code> that makes that same formula come out as
-          <b>1</b> — so <code>mul(c, b) = 1</code>. That is the definition, and it is why the
-          name says <em>multiplicative</em>: it is the inverse of multiplication, exactly as
-          <code>−c</code> is the inverse of addition. But multiplication only tells you
-          <em>what to look for</em>, not <em>where to find it</em> — searching by trial means
-          trying every <code>b</code>, hopeless for a 256-bit p. Fermat's little theorem hands
-          it over directly: <code>c<sup>p−1</sup> ≡ 1</code>, so
-          <code>c × c<sup>p−2</sup> ≡ 1</code>, so <code>c<sup>p−2</sup> ≡ c⁻¹</code>. One
-          <code>modpow</code>, no search.</p>
+          <p class="cap" style="margin-top:8px"><b>Where does it come from?</b> Use the
+          multiplication right above: <code>a × b ≡ (a · b) mod p</code>. Hold <code>a</code>
+          fixed and ask which <code>b</code> makes the product <b>1</b> — that <code>b</code> is
+          the multiplicative inverse of <code>a</code>, written <code>a⁻¹</code>. Concretely, at
+          p = 7: <code>3 × 5 = 15 ≡ 1</code>, so <code>3⁻¹ = 5</code>. The crate calls that
+          fixed operand <code>c</code>, which is why the formula above reads
+          <code>c⁻¹ ≡ c^(p−2) mod p</code>.</p>
+          <p class="cap" style="margin-top:8px">The name is literal: it is the inverse
+          <em>of multiplication</em>, exactly as <code>−c</code> is the inverse of addition.
+          But multiplication only says <em>what to look for</em>, not <em>where to find it</em> —
+          trying every <code>b</code> is hopeless at 256 bits. Fermat's little theorem hands it
+          over: <code>c<sup>p−1</sup> ≡ 1</code>, so <code>c × c<sup>p−2</sup> ≡ 1</code>, so
+          <code>c<sup>p−2</sup> ≡ c⁻¹</code>. One <code>modpow</code>, no search.</p>
         </div>
         <div>
           <h3>division</h3>
