@@ -33,7 +33,7 @@ Every panel has an `id`, so any of them can be linked to directly:
 | --- | --- |
 | the formulas (all four pages) | `finite-field.html#formulas`, `point-arithmetic.html#formulas`, `ecdsa.html#formulas`, `schnorr.html#formulas` |
 | the notes (all four pages) | `…#notes` |
-| the clock | `finite-field.html#clock` |
+| the clock | `finite-field.html#clock-panel` |
 | Fermat's little theorem | `finite-field.html#fermat` |
 | why p must be prime | `finite-field.html#why-prime` |
 | the operation table | `finite-field.html#operation-table` |
