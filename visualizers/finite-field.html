@@ -151,12 +151,15 @@
           p = 7: <code>3 × 5 = 15 ≡ 1</code>, so <code>3⁻¹ = 5</code>. The crate calls that
           fixed operand <code>c</code>, which is why the formula above reads
           <code>c⁻¹ ≡ c^(p−2) mod p</code>.</p>
-          <p class="cap" style="margin-top:8px">The name is literal: it is the inverse
-          <em>of multiplication</em>, exactly as <code>−c</code> is the inverse of addition.
-          But multiplication only says <em>what to look for</em>, not <em>where to find it</em> —
-          trying every <code>b</code> is hopeless at 256 bits. Fermat's little theorem hands it
-          over: <code>c<sup>p−1</sup> ≡ 1</code>, so <code>c × c<sup>p−2</sup> ≡ 1</code>, so
-          <code>c<sup>p−2</sup> ≡ c⁻¹</code>. One <code>modpow</code>, no search.</p>
+          <p class="cap" style="margin-top:8px"><b>How did it become <code>c^(p−2)</code>?</b>
+          Fermat gives <code>c^(p−1) ≡ 1</code>, and <code>c^(p−1)</code> is just
+          <code>c × c^(p−2)</code> — one factor of <code>c</code> peeled off the front. So
+          Fermat really says <code>c × c^(p−2) ≡ 1</code>, which is exactly the definition of
+          the inverse: <code>c</code> times <code>c^(p−2)</code> lands on 1. The exponent
+          drops from <code>p−1</code> to <code>p−2</code> purely because one <code>c</code> was
+          taken out to stand on its own. At p = 7: <code>3^6 ≡ 1</code>, peel one 3 off →
+          <code>3 × 3^5 ≡ 1</code>, and <code>3^5 = 243 ≡ 5</code>, so
+          <code>3 × 5 ≡ 1</code>. One <code>modpow</code>, no search.</p>
         </div>
         <div>
           <h3>division</h3>
