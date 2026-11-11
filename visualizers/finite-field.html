@@ -79,7 +79,7 @@
     <div id="msg"></div>
 
     <div class="split">
-      <section class="panel figure">
+      <section class="panel figure" id="clock">
         <div class="panel-h"><span>the clock</span><span class="note" id="clock-cap"></span></div>
         <svg id="clock" viewBox="0 0 360 360" role="img" aria-label="Clock diagram of the operation"></svg>
         <div class="stepper">
@@ -185,7 +185,7 @@
       <div class="listing" id="rs"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="operation-table">
       <div class="panel-h"><span id="tt">operation table</span><span class="note" id="tc"></span></div>
       <div class="tw" id="tb"></div>
       <div id="table-explain"></div>
@@ -312,7 +312,7 @@
       <div id="bp-out" style="margin-top:12px"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="why-prime">
       <div class="panel-h"><span>why p must be prime</span><span class="note">the crate assumes it</span></div>
       <p class="cap" style="margin-bottom:12px">
         <code>FiniteField::inverse_mul</code> assumes that <code>p</code> is prime — it uses

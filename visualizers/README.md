@@ -19,10 +19,32 @@ from the root of the project site.
 
 Every page carries a **the formulas** panel: a static, at-a-glance reference of the
 equations the page is about, next to the crate function that implements each one.
-The finite field page lists all six operations; the elliptic curve page lists the
-curve equation, the chord and tangent slopes, the shared `x₃` / `y₃` formulas, the
-reflection case and scalar multiplication. The ECDSA and Schnorr pages have their
-own equivalents.
+The finite field page lists all six operations plus Fermat's little theorem; the
+elliptic curve page lists the curve equation, the chord and tangent slopes, the
+shared `x₃` / `y₃` formulas, the reflection case and scalar multiplication; the
+ECDSA page lists the three stages with `w`, `u₁` and `u₂`; the Schnorr page lists
+BIP-340 stage by stage, from the public key to the verification equation.
+
+### Deep links
+
+Every panel has an `id`, so any of them can be linked to directly:
+
+| Panel | URL |
+| --- | --- |
+| the formulas (all four pages) | `finite-field.html#formulas`, `point-arithmetic.html#formulas`, `ecdsa.html#formulas`, `schnorr.html#formulas` |
+| the notes (all four pages) | `…#notes` |
+| the clock | `finite-field.html#clock` |
+| Fermat's little theorem | `finite-field.html#fermat` |
+| why p must be prime | `finite-field.html#why-prime` |
+| the operation table | `finite-field.html#operation-table` |
+| the branch checks | `point-arithmetic.html#branch-checks` |
+| the scope of the crate | `point-arithmetic.html#scope` |
+| why verification works | `ecdsa.html#why-verification`, `schnorr.html#why-verification` |
+| the nonce must never repeat | `ecdsa.html#nonce-reuse` |
+| the scalar multiplications | `ecdsa.html#scalar-mults` |
+| the signature | `schnorr.html#signature` |
+| the equation, checked | `schnorr.html#equation-checked` |
+| schnorr vs ecdsa | `schnorr.html#vs-ecdsa` |
 
 There is no build step. Open any page in a browser, or serve the folder:
 
