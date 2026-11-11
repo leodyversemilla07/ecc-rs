@@ -144,6 +144,12 @@
           <p class="cap"><code>FiniteField::inverse_mul</code> — one <code>modpow</code>, using
           <a href="#fermat">Fermat's little theorem</a>. Requires a <b>prime</b> p and a non-zero
           c; the crate does not check either.</p>
+          <p class="cap" style="margin-top:8px"><b>Where does it come from?</b> Not from
+          multiplication — multiplication only <em>tests</em> for an inverse
+          (<code>c⁻¹</code> is the <code>b</code> where <code>c × b ≡ 1</code>). It comes from
+          Fermat's little theorem: <code>c<sup>p−1</sup> ≡ 1</code>, so
+          <code>c × c<sup>p−2</sup> ≡ 1</code>, so <code>c<sup>p−2</sup></code> <em>is</em> the
+          inverse. One <code>modpow</code> instead of searching for it by trial.</p>
         </div>
         <div>
           <h3>division</h3>
