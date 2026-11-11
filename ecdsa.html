@@ -115,8 +115,8 @@
       </section>
     </div>
 
-    <section class="panel">
-      <div class="panel-h"><span>the three stages</span></div>
+    <section class="panel" id="formulas">
+      <div class="panel-h"><span>the formulas</span><span class="note">the three stages</span></div>
       <div class="grid-3">
         <div>
           <h3>1 · key generation</h3>
@@ -129,18 +129,19 @@
           <h3>2 · signing</h3>
           <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px"><div class="expr">r = x(kG) mod n<br>s = k⁻¹(H(M) + r·d) mod n</div></div>
           <p class="cap">A fresh random nonce <code>k</code> gives the random point <code>R = kG</code>;
-          its x-coordinate becomes <code>r</code>. The signature is the pair <code>(r, s)</code>.</p>
+          its x-coordinate becomes <code>r</code>. The signature is the pair <code>(r, s)</code>.
+          Note the <code>k⁻¹</code> — Schnorr has no modular inverse at all.</p>
         </div>
         <div>
           <h3>3 · verification</h3>
-          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px"><div class="expr">P = u₁G + u₂Q<br>x(P) ≡ r (mod n)</div></div>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px"><div class="expr">w = s⁻¹ mod n<br>u₁ = H(M)·w mod n<br>u₂ = r·w mod n<br>P = u₁G + u₂Q<br>valid ⇔ x(P) ≡ r (mod n)</div></div>
           <p class="cap">The verifier rebuilds a point from public data only and compares its
-          x-coordinate with <code>r</code>.</p>
+          x-coordinate with <code>r</code>. The proof of why this works is in the panel below.</p>
         </div>
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="why-verification">
       <div class="panel-h"><span>why verification works</span><span class="note">the proof from lesson 29</span></div>
       <ol class="cap" style="margin:0;padding-left:1.3rem;line-height:1.9">
         <li>We know from the signing step that <code>s = k⁻¹(H(M) + r d) mod n</code>.</li>
@@ -161,7 +162,7 @@
       and it does not need to.</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="nonce-reuse">
       <div class="panel-h"><span>the nonce must never repeat</span></div>
       <p class="cap">Sign two messages <code>M₁</code> and <code>M₂</code> with the same <code>k</code>
       and the same private key <code>d</code>, and <code>r</code> is the same for both. Subtracting the
@@ -179,7 +180,7 @@
       <div class="listing" id="rs"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="scalar-mults">
       <div class="panel-h"><span>the scalar multiplications</span><span class="note">each is a double-and-add ladder</span></div>
       <p class="cap">Key generation, signing and verification all reduce to
       <code>EllipticCurve::multiply</code>. Each row is one bit of the scalar:
@@ -187,7 +188,7 @@
       <div class="tw" id="ladder-table" style="margin-top:10px"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="notes">
       <div class="panel-h"><span>notes</span></div>
       <div class="grid-2">
         <div>

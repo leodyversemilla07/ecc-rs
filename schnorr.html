@@ -106,7 +106,77 @@
       </section>
     </div>
 
-    <section class="panel">
+    <section class="panel" id="formulas">
+      <div class="panel-h"><span>the formulas</span><span class="note">BIP-340, stage by stage</span></div>
+      <p class="cap" style="margin-bottom:12px">
+        The whole scheme, in one place. Everything here is what
+        <code>schnorr/src/lib.rs</code> computes — the trace below replays it with your own
+        numbers.
+      </p>
+      <div class="grid-2">
+        <div>
+          <h3>1 · public key</h3>
+          <div class="readout" style="border-left-color:var(--cyan);margin-bottom:8px">
+            <div class="expr">P = d·G<span class="op">·</span>pk = x(P)</div>
+          </div>
+          <p class="cap"><code>public_key</code> — only the x-coordinate is published. BIP-340
+          fixes the y implicitly to the <b>even</b> one, which is what makes 32 bytes
+          unambiguous.</p>
+        </div>
+        <div>
+          <h3>2 · the nonce</h3>
+          <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px">
+            <div class="expr">t = bytes(d) ⊕ hash<sub>aux</sub>(a)<br>rand = hash<sub>nonce</sub>(t ‖ bytes(P) ‖ m)</div>
+          </div>
+          <p class="cap">The nonce is <em>derived</em>, not random. Hashing the secret key into it
+          means a broken RNG cannot leak the key — and the auxiliary randomness
+          <code>a</code> is what stops the same message signing to the same nonce twice.</p>
+        </div>
+        <div>
+          <h3>3 · the challenge</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">e = int(hash<sub>challenge</sub>(bytes(R) ‖ bytes(P) ‖ m)) mod n</div>
+          </div>
+          <p class="cap">The challenge commits to the public key, the nonce point <em>and</em> the
+          message. That is what makes Schnorr non-malleable — ECDSA does not put the public key
+          into its hash.</p>
+        </div>
+        <div>
+          <h3>4 · signing</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">R = k·G<span class="op">·</span>s = (k + e·d) mod n</div>
+          </div>
+          <p class="cap"><code>sign_once</code> — the signature is <code>r = x(R)</code> and
+          <code>s</code>. Note there is <b>no modular inverse</b> anywhere: ECDSA needs
+          <code>k⁻¹</code>, Schnorr does not.</p>
+        </div>
+        <div>
+          <h3>5 · verifying</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">R′ = s·G − e·P<span class="op">·</span>valid ⇔ has_even_y(R′) ∧ x(R′) = r</div>
+          </div>
+          <p class="cap"><code>verify</code> — the verifier rebuilds <code>R′</code> from public
+          data only and checks the x-coordinate <em>and</em> the even-y convention. The secret
+          key never appears.</p>
+        </div>
+        <div>
+          <h3>the equation it all rests on</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">s·G = (k + e·d)·G = k·G + e·(d·G) = R + e·P</div>
+          </div>
+          <p class="cap">One line, and it is <em>additive</em>. That single property is why Schnorr
+          is provably secure, why <code>(r, n−s)</code> does not verify, and why several signers
+          can produce one signature together (MuSig, threshold signatures).</p>
+        </div>
+      </div>
+      <div class="status info" style="margin-top:14px">
+        <div>Each hash uses its own tag — <code>BIP0340/aux</code>,
+        <code>BIP0340/nonce</code>, <code>BIP0340/challenge</code> — so the three hashes cannot be
+        confused with one another or with any other hash.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="signature">
       <div class="panel-h"><span>the signature</span><span class="note">64 bytes, always</span></div>
       <div class="grid-2">
         <div>
@@ -129,7 +199,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="why-verification">
       <div class="panel-h"><span>why verification works</span><span class="note">the algebra</span></div>
       <p class="cap">Signing produces <code>s = k + e·d</code> and <code>R = k·G</code>. Multiplying the
       first by the generator:</p>
@@ -143,12 +213,12 @@
       threshold signatures do.</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="equation-checked">
       <div class="panel-h"><span>the equation, checked</span><span class="note">s·G vs R + e·P</span></div>
       <div class="tw" id="equation-table"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="vs-ecdsa">
       <div class="panel-h"><span>schnorr vs ecdsa</span><span class="note">same curve, different shape</span></div>
       <table class="data">
         <tr><th></th><th>ECDSA</th><th>Schnorr (BIP-340)</th></tr>
@@ -167,7 +237,7 @@
       <div class="listing" id="rs"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="notes">
       <div class="panel-h"><span>notes</span></div>
       <div class="grid-2">
         <div>
