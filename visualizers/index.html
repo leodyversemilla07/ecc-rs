@@ -19,7 +19,7 @@
   <p class="kicker">ecc-rs · interactive</p>
   <h1>Visualizers</h1>
   <p class="lead">
-    Three instrument panels that show the mathematics behind this crate. Every number on these
+    Four instrument panels that show the mathematics behind this crate. Every number on these
     pages is computed the way the Rust computes it: the pages mirror the source line by line, and
     they show the branches where the crate panics just as faithfully as the branches where it
     returns a result.
@@ -79,16 +79,18 @@
         <a class="panel" href="finite-field.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
           <div class="panel-h"><span>1 · finite field operations</span><span class="note">open →</span></div>
           <p class="cap">Numbers on a clock of <b>p</b> hours. Addition, subtraction, multiplication,
-          division and both kinds of inverse — plus Fermat's little theorem, the FLT-powered division
-          the crate actually uses, and modulo for 60-digit numbers.</p>
+          division and both kinds of inverse — plus a reference panel with all six formulas
+          side by side, Fermat's little theorem, the FLT-powered division the crate actually uses,
+          and modulo for 60-digit numbers.</p>
           <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecc/src/finite_field.rs</p>
         </a>
 
         <a class="panel" href="point-arithmetic.html" style="text-decoration:none;color:inherit;display:block;padding:14px 16px">
           <div class="panel-h"><span>2 · elliptic curve operations</span><span class="note">open →</span></div>
           <p class="cap">The F<sub>p</sub> grid of points on the curve, a step-by-step walkthrough of
-          <code>add</code>, <code>double</code> and <code>multiply</code>, the branch conditions the
-          code tests, and the double-and-add ladder drawn on the curve.</p>
+          <code>add</code>, <code>double</code> and <code>multiply</code>, a reference panel with
+          the curve equation and the group law, the branch conditions the code tests, and the
+          double-and-add ladder drawn on the curve.</p>
           <p class="cap mono" style="margin-top:8px;color:var(--fg-faint)">ecc/src/elliptic_curve.rs · ecc/src/point.rs</p>
         </a>
 
@@ -123,9 +125,9 @@
         <div>
           <h3>they mirror the semantics</h3>
           <p class="cap">The JavaScript in <code>visualizers/assets/ecc.js</code> re-implements
-          <code>FiniteField</code>, <code>EllipticCurve</code> and <code>Ecdsa</code>, including
-          their <code>assert!</code>s. A failing assert becomes a visible "the program panics
-          here".</p>
+          <code>FiniteField</code>, <code>EllipticCurve</code>, <code>Ecdsa</code> and BIP-340
+          Schnorr, including their <code>assert!</code>s. A failing assert becomes a visible "the
+          program panics here".</p>
         </div>
         <div>
           <h3>they were checked against the crate</h3>

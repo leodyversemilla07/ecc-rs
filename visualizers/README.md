@@ -17,6 +17,13 @@ from the root of the project site.
 | [`ecdsa.html`](ecdsa.html) | `ecdsa/src/lib.rs` — key generation, signing, verification |
 | [`schnorr.html`](schnorr.html) | `schnorr/src/lib.rs` — BIP-340 Schnorr signatures |
 
+Every page carries a **the formulas** panel: a static, at-a-glance reference of the
+equations the page is about, next to the crate function that implements each one.
+The finite field page lists all six operations; the elliptic curve page lists the
+curve equation, the chord and tangent slopes, the shared `x₃` / `y₃` formulas, the
+reflection case and scalar multiplication. The ECDSA and Schnorr pages have their
+own equivalents.
+
 There is no build step. Open any page in a browser, or serve the folder:
 
 ```sh

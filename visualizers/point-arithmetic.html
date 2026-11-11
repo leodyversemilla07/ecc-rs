@@ -146,6 +146,70 @@
       <div class="checks" id="branches"></div>
     </section>
 
+    <section class="panel" id="formulas">
+      <div class="panel-h"><span>the formulas</span><span class="note">the curve and the group law</span></div>
+      <p class="cap" style="margin-bottom:12px">
+        A point on the curve over <b>F<sub>p</sub></b> satisfies the curve equation. The group
+        law turns two points into a third one, and the crate splits it into the slope and the
+        two resulting coordinates.
+      </p>
+      <div class="grid-2">
+        <div>
+          <h3>the curve</h3>
+          <div class="readout" style="border-left-color:var(--cyan);margin-bottom:8px">
+            <div class="expr">y²<span class="op">≡</span>x³ + ax + b (mod p)</div>
+          </div>
+          <p class="cap"><code>EllipticCurve::on_curve</code> — the test that decides whether a
+          coordinate is a point of the curve. It returns <code>false</code> for the identity,
+          which is not an affine coordinate.</p>
+        </div>
+        <div>
+          <h3>the slope of the chord</h3>
+          <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px">
+            <div class="expr">s<span class="op">≡</span>(y₂ − y₁) · (x₂ − x₁)⁻¹ (mod p)</div>
+          </div>
+          <p class="cap">The slope of the line through two distinct points. The inverse is
+          Fermat's little theorem, so this is one modular exponentiation — see the
+          <a href="finite-field.html">finite field page</a>.</p>
+        </div>
+        <div>
+          <h3>the result</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">x₃<span class="op">=</span>s² − x₁ − x₂<br>y₃<span class="op">=</span>s(x₁ − x₃) − y₁</div>
+          </div>
+          <p class="cap"><code>compute_x3_y3</code> — shared by addition and doubling. The third
+          intersection of the line with the curve, reflected across the x-axis.</p>
+        </div>
+        <div>
+          <h3>the slope of the tangent</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">s<span class="op">≡</span>(3x₁² + a) · (2y₁)⁻¹ (mod p)</div>
+          </div>
+          <p class="cap"><code>EllipticCurve::double</code> — the tangent instead of the chord.
+          The result uses the same formulas with <code>x₂ = x₁</code>, so
+          <code>x₃ = s² − 2x₁</code>.</p>
+        </div>
+        <div>
+          <h3>the reflection</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">P + (−P)<span class="op">=</span>O</div>
+          </div>
+          <p class="cap">The exceptional case of the chord: when <code>x₁ == x₂</code> and
+          <code>y₁ + y₂ ≡ 0</code>, the line is vertical and the sum is the identity. The
+          crate returns <code>Point::Identity</code> here.</p>
+        </div>
+        <div>
+          <h3>scalar multiplication</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">d · P<span class="op">=</span>double-and-add over the bits of d</div>
+          </div>
+          <p class="cap"><code>EllipticCurve::multiply</code> — for each bit, from the most
+          significant down: double the accumulator, then add the base point once more if the
+          bit is 1.</p>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" id="ladder-card" style="display:none">
       <div class="panel-h"><span>the double-and-add ladder</span><span class="note" id="ladder-cap"></span></div>
       <p class="cap">

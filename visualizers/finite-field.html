@@ -95,6 +95,91 @@
       </section>
     </div>
 
+    <section class="panel" id="formulas">
+      <div class="panel-h"><span>the formulas</span><span class="note">the six operations, side by side</span></div>
+      <p class="cap" style="margin-bottom:12px">
+        The field is <b>F<sub>p</sub></b> = {0, 1, …, p−1} with every operation taken
+        modulo p. These are the six functions in <code>FiniteField</code>, each with the
+        crate function that implements it — plus the theorem that makes the two inverses work.
+      </p>
+      <div class="grid-2">
+        <div>
+          <h3>addition</h3>
+          <div class="readout" style="border-left-color:var(--cyan);margin-bottom:8px">
+            <div class="expr">a + b<span class="op">≡</span>(a + b) mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::add</code> — the one primitive. Both operands
+          must already be reduced (<code>a &lt; p</code>); the function asserts it.</p>
+        </div>
+        <div>
+          <h3>subtraction</h3>
+          <div class="readout" style="border-left-color:var(--cyan);margin-bottom:8px">
+            <div class="expr">c − d<span class="op">≡</span>c + (p − d) mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::sub</code> — not a primitive. It adds the
+          additive inverse of <code>d</code>, and so it reduces <code>d</code> itself.</p>
+        </div>
+        <div>
+          <h3>multiplication</h3>
+          <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px">
+            <div class="expr">a × b<span class="op">≡</span>(a · b) mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::mul</code> — the second primitive. Same
+          precondition as <code>add</code>: both operands must already be reduced.</p>
+        </div>
+        <div>
+          <h3>additive inverse</h3>
+          <div class="readout" style="border-left-color:var(--rose);margin-bottom:8px">
+            <div class="expr">−c<span class="op">≡</span>(p − c) mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::inverse_add</code> — one subtraction, no
+          exponentiation. Note that <code>−0 ≡ 0</code>, which is why the crate reduces the
+          result once more.</p>
+        </div>
+        <div>
+          <h3>multiplicative inverse</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">c⁻¹<span class="op">≡</span>c<sup>p−2</sup> mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::inverse_mul</code> — one <code>modpow</code>, using
+          <a href="#fermat">Fermat's little theorem</a>. Requires a <b>prime</b> p and a non-zero
+          c; the crate does not check either.</p>
+        </div>
+        <div>
+          <h3>division</h3>
+          <div class="readout" style="border-left-color:var(--good);margin-bottom:8px">
+            <div class="expr">c ÷ d<span class="op">≡</span>c · d<sup>p−2</sup> mod p</div>
+          </div>
+          <p class="cap"><code>FiniteField::div</code> — not a primitive. It multiplies by
+          the multiplicative inverse, so it inherits the prime-modulus assumption.</p>
+        </div>
+        <div>
+          <h3>fermat's little theorem</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">a<sup>p−1</sup><span class="op">≡</span>1 (mod p)</div>
+          </div>
+          <p class="cap">The theorem behind both inverses: for a prime p and any non-zero a,
+          <code>a<sup>p−1</sup> ≡ 1</code>. Dividing by one a gives
+          <code>a<sup>p−2</sup> ≡ a⁻¹</code>, which is exactly what
+          <code>inverse_mul</code> computes. The live panel below walks it step by step.</p>
+        </div>
+        <div>
+          <h3>and the consequence</h3>
+          <div class="readout" style="border-left-color:var(--accent);margin-bottom:8px">
+            <div class="expr">a<sup>p−1</sup><span class="op">≡</span>1<span class="op">⇒</span>a<sup>p−2</sup><span class="op">≡</span>a⁻¹</div>
+          </div>
+          <p class="cap">This is the whole reason <code>inverse_mul</code> is one
+          <code>modpow</code> instead of a search for b⁻¹ by trial — and the reason the crate
+          insists on a prime modulus. The
+          <a href="#fermat">fermat's little theorem</a> panel below walks the chain.</p>
+        </div>
+      </div>
+      <div class="status info" style="margin-top:14px">
+        <div>Only <code>add</code> and <code>mul</code> do arithmetic. Everything else is
+        built from them, which is why the crate has exactly two primitive operations.</div>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-h"><span>rust source</span><span class="note">ecc/src/finite_field.rs</span></div>
       <div class="listing" id="rs"></div>
@@ -106,7 +191,7 @@
       <div id="table-explain"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="fermat">
       <div class="panel-h"><span>fermat's little theorem</span><span class="note" id="fc"></span></div>
       <div class="readout" style="border-left-color:var(--cyan);margin-bottom:12px">
         <div class="expr" id="feq"></div>
