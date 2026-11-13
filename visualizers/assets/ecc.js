@@ -95,6 +95,19 @@
     if (!cond) throw new RustPanic(message);
   }
 
+  /**
+   * Runs `fn` and turns a modelled Rust panic into a value the page can
+   * show, instead of letting it escape and leave the page half-rendered.
+   */
+  function guardPanic(fn) {
+    try {
+      return { ok: true, value: fn() };
+    } catch (error) {
+      if (!error || !error.isPanic) throw error;
+      return { ok: false, panic: error.message };
+    }
+  }
+
   /* ── ecc/src/finite_field.rs ──────────────────────────────────────────── */
 
   const ff = {
@@ -285,7 +298,11 @@
       const limit = 4n * curve.p + 100n;
       let t = c;
       for (let i = 1n; i < limit; i += 1n) {
-        t = i === 1n ? ec.double(curve, t) : ec.add(curve, t, c);
+        // The crate panics on some of these (p = 3, for one), and the order
+        // is only a note on the page — 0 means "not available".
+        const run = guardPanic(() => (i === 1n ? ec.double(curve, t) : ec.add(curve, t, c)));
+        if (!run.ok) return 0n;
+        t = run.value;
         if (t === IDENTITY) return i + 1n;
       }
       return 0n;
@@ -337,7 +354,21 @@
     for (let i = total - 1; i >= 0; i -= 1) {
       const bit = bits[total - i]; // bit for position i, read from the MSB down
       const position = total - 1 - i; // 0-based position from the MSB
-      const doubled = ec.double(curve, t);
+      const doubledRun = guardPanic(() => ec.double(curve, t));
+      if (!doubledRun.ok) {
+        steps.push({
+          title: 'panic!',
+          lines: [
+            line('bad', `assert! fails: ${doubledRun.panic}`),
+            line('dim', 'the crate multiplies by the literal 3, and FiniteField::mul wants both operands smaller than p'),
+          ],
+        });
+        return {
+          steps, ladder, result: IDENTITY,
+          eqL: `${ptCode(base)} × ${scalar}`, eqR: '— the program panics here', panic: doubledRun.panic,
+        };
+      }
+      const doubled = doubledRun.value;
       if (position < narrated) {
         steps.push({
           title: `bit ${total - i} of ${total}: d.bit(${i}) = ${bit}  →  t = double(t)`,
@@ -351,12 +382,30 @@
         ladder.push({ label: `2·t (bit ${bit})`, point: t });
 
         if (bit === '1') {
-          const added = ec.add(curve, t, base);
+          // `add` refuses to add a point to itself, and the ladder can land on
+          // exactly that: the crate doubles instead of adding.
+          const same = ptEq(t, base);
+          const addedRun = guardPanic(() => (same ? ec.double(curve, t) : ec.add(curve, t, base)));
+          if (!addedRun.ok) {
+            steps.push({
+              title: 'panic!',
+              lines: [
+                line('bad', `assert! fails: ${addedRun.panic}`),
+              ],
+            });
+            return {
+              steps, ladder, result: IDENTITY,
+              eqL: `${ptCode(base)} × ${scalar}`, eqR: '— the program panics here', panic: addedRun.panic,
+            };
+          }
+          const added = addedRun.value;
           steps.push({
             title: `the bit is 1  →  t = add(t, c)`,
             lines: [
-              line('code', 'if d.bit(i) { t = self.add(&t, c); }'),
-              line('calc', `${ptText(t)} + ${ptText(base)} = ${ptText(added)}`),
+              line('code', 't = if t == *c { self.double(&t) } else { self.add(&t, c) };'),
+              line('calc', same
+                ? `t is the base point, so the crate doubles it: 2 · ${ptText(t)} = ${ptText(added)}`
+                : `${ptText(t)} + ${ptText(base)} = ${ptText(added)}`),
               line('dim', 'the chord through the two points meets the curve a third time; reflect it'),
             ],
           });
@@ -376,7 +425,19 @@
         t = doubled;
         ladder.push({ label: `2·t (bit ${bit})`, point: t });
         if (bit === '1') {
-          t = ec.add(curve, t, base);
+          const same = ptEq(t, base);
+          const addedRun = guardPanic(() => (same ? ec.double(curve, t) : ec.add(curve, t, base)));
+          if (!addedRun.ok) {
+            steps.push({
+              title: 'panic!',
+              lines: [line('bad', `assert! fails: ${addedRun.panic}`)],
+            });
+            return {
+              steps, ladder, result: IDENTITY,
+              eqL: `${ptCode(base)} × ${scalar}`, eqR: '— the program panics here', panic: addedRun.panic,
+            };
+          }
+          t = addedRun.value;
           ladder.push({ label: '+ c', point: t });
         }
         skipped += 1;
@@ -682,10 +743,27 @@
       return out;
     }
 
-    const x1sq = ff.mul(c.x, c.x, p);
-    const three = ff.mul(3n, x1sq, p);
-    const numerator = ff.add(three, curve.a, p);
-    const denominator = ff.mul(2n, c.y, p);
+    const slopeRun = guardPanic(() => {
+      const x1sq = ff.mul(c.x, c.x, p);
+      const three = ff.mul(3n, x1sq, p);
+      return {
+        x1sq,
+        three,
+        numerator: ff.add(three, curve.a, p),
+        denominator: ff.mul(2n, c.y, p),
+      };
+    });
+    if (!slopeRun.ok) {
+      out.panic = slopeRun.panic;
+      out.eqL = `2 · ${ptCode(c)}`;
+      out.eqR = '— the program panics here';
+      push('panic!', [
+        line('bad', `assert! fails: ${out.panic}`),
+        line('dim', 'the crate multiplies by the literal 3, and FiniteField::mul wants both operands smaller than p'),
+      ]);
+      return out;
+    }
+    const { x1sq, three, numerator, denominator } = slopeRun.value;
 
     push('numerator = 3x₁² + a', [
       line('code', 'FiniteField::mul(&BigUint::from(3u32), &FiniteField::mul(x1, x1, &self.p), &self.p)'),

@@ -813,6 +813,8 @@ svg { width: 100%; height: auto; display: block; }
 /* real curve */
 .real-grid { stroke: var(--line); stroke-width: 1; opacity: .55; }
 .real-axis { stroke: var(--line-2); stroke-width: 1; }
+.real-zero { stroke: var(--fg-faint); stroke-width: 1.2; }
+.real-tick { stroke: var(--fg-faint); stroke-width: 1; }
 .real-curve { fill: none; stroke: var(--cyan); stroke-width: 2; }
 .real-line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
 .real-label {
