@@ -142,8 +142,8 @@
     </div>
 
     <section class="panel">
-      <div class="panel-h"><span>the same equation over ℝ</span><span class="note">a drawing aid, not computed by the crate</span></div>
-      <svg id="realCurve" viewBox="0 0 900 400" role="img" aria-label="Real-number elliptic curve with a single secant or tangent line"></svg>
+      <div class="panel-h"><span>the same curve over ℝ</span><span class="note">the same points, drawn with real numbers</span></div>
+      <svg id="realCurve" viewBox="0 0 900 400" role="img" aria-label="Real-number elliptic curve with the secant or tangent of the current example"></svg>
       <p class="cap" id="realNote" style="margin-top:10px"></p>
     </section>
 
@@ -502,7 +502,35 @@
     return r >= 0 ? Math.sqrt(r) : null;
   }
 
-  function findRealSeedX(a, b) {
+  /** A tick step that leaves about n labels on an axis. */
+  function niceStep(span, target) {
+    if (!(span > 0)) return 1;
+    const raw = span / target;
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / pow;
+    const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    return step * pow;
+  }
+
+  /** The tick values from lo to hi, in steps of step. */
+  function ticksIn(lo, hi, step) {
+    const out = [];
+    const start = Math.ceil(lo / step - 1e-9) * step;
+    for (let i = 0; i < 200; i += 1) {
+      const v = start + i * step;
+      if (v > hi + 1e-9) break;
+      out.push(Number(v.toFixed(10)));
+    }
+    return out;
+  }
+
+  /** A short number for a tick label. */
+  function fmtNum(v) {
+    return String(Math.round(v * 1000) / 1000).replace('-', '−');
+  }
+
+  /** The leftmost x where the real curve exists — where x³ + ax + b = 0. */
+  function findRealStartX(a, b) {
     const M = Math.max(8, Math.abs(a) + Math.abs(b) + 6);
     let last = M;
     for (let x = M; x >= -M; x -= 0.01) {
@@ -510,6 +538,220 @@
       last = x;
     }
     return 0;
+  }
+
+  /** Third intersection S of a line with the curve, and its reflection R. */
+  function realHit(s, x1, x2, y1) {
+    const x3 = (s * s) - x1 - x2;
+    const y3 = (s * (x1 - x3)) - y1;
+    return { S: { x: x3, y: -y3 }, R: { x: x3, y: y3 } };
+  }
+
+  /** The chord through two real points. */
+  function realChord(A, B) {
+    return realHit((B.y - A.y) / (B.x - A.x), A.x, B.x, A.y);
+  }
+
+  /** The tangent at a real point. */
+  function realTangent(A, a) {
+    return realHit(((3 * A.x * A.x) + a) / (2 * A.y), A.x, A.x, A.y);
+  }
+
+  /** The crate's double-and-add ladder, run over the reals. */
+  function realLadder(k, base, a) {
+    const out = [base];
+    let t = base;
+    const bits = k.toString(2);
+    for (let i = bits.length - 2; i >= 0; i -= 1) {
+      if (Math.abs(t.y) < 1e-9) break;
+      t = realTangent(t, a).R;
+      out.push(t);
+      if (bits[i] === '1') {
+        if (Math.abs(t.x - base.x) < 1e-9) {
+          if (Math.abs(t.y - base.y) > 1e-9) break;   /* t + base = ∞ */
+          t = realTangent(t, a).R;                   /* the crate doubles here */
+        } else {
+          t = realChord(t, base).R;
+        }
+        out.push(t);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The current example drawn over the reals: the same curve, the same
+   * points, the same operation.
+   */
+  function realGeometry(run) {
+    const a = Number(state.a);
+    const b = Number(state.b);
+    const P = run.P;
+    const Q = run.Q;
+    const g = {
+      kind: 'none', A: null, B: null, S: null, R: null,
+      line: null, ladder: [], rlabel: 'R', note: '',
+    };
+
+    /* The real point above a field column — null when there is none to draw. */
+    const upper = (q) => {
+      if (!q) return null;
+      const x = Number(q.x);
+      const y = realY(x, a, b);
+      if (y === null || !Number.isFinite(y) || y > 1e4) return null;
+      return { x, y };
+    };
+
+    /* A point whose column is off the real curve. */
+    const noColumn = (q) => {
+      const x = Number(q.x);
+      g.note = `The column x = ${x} has no point on the real curve here, so there is nothing to draw over the reals.`;
+      return g;
+    };
+
+    if (run.mode === 'multiply') {
+      if (!P) {
+        g.note = 'The base point is the identity, and every multiple of it is the identity.';
+        return g;
+      }
+      const base = upper(P);
+      if (!base) return noColumn(P);
+      if (base.y < 1e-12) {
+        g.note = 'P has y = 0, so it is its own inverse and the tangent there is vertical: the ladder leaves the curve at the point at infinity.';
+        return g;
+      }
+      const k = BigInt($('#kin').value || '0');
+      g.kind = 'ladder';
+      g.A = base;
+      g.ladder = realLadder(k, base, a);
+      g.R = g.ladder[g.ladder.length - 1];
+      g.rlabel = `R = ${k}·P`;
+      return g;
+    }
+
+    if (run.mode === 'double') {
+      if (!P) {
+        g.note = 'The point is the identity, and 2 · ∞ is the identity.';
+        return g;
+      }
+      const A = upper(P);
+      if (!A) return noColumn(P);
+      g.A = A;
+      if (A.y < 1e-12) {
+        /* The tangent at a point with y = 0 is vertical: 2P = ∞. */
+        g.kind = 'vertical';
+        g.note = 'P has y = 0, so the tangent there is vertical and its third intersection is the point at infinity: 2P = ∞.';
+        return g;
+      }
+      g.kind = 'tangent';
+      const hit = realTangent(A, a);
+      g.S = hit.S;
+      g.R = hit.R;
+      g.line = { s: ((3 * A.x * A.x) + a) / (2 * A.y), x0: A.x, y0: A.y };
+      g.rlabel = 'R = 2P';
+      return g;
+    }
+
+    /* P + Q */
+    if (!P && !Q) {
+      g.note = 'Both points are the identity, and ∞ + ∞ is the identity.';
+      return g;
+    }
+    if (!P) {
+      const B = upper(Q);
+      if (!B) return noColumn(Q);
+      g.kind = 'single';
+      g.B = B;
+      g.R = B;
+      g.rlabel = 'R = Q';
+      g.note = 'P is the identity, so the sum is Q itself.';
+      return g;
+    }
+    if (!Q) {
+      const A = upper(P);
+      if (!A) return noColumn(P);
+      g.kind = 'single';
+      g.A = A;
+      g.R = A;
+      g.rlabel = 'R = P';
+      g.note = 'Q is the identity, so the sum is P itself.';
+      return g;
+    }
+
+    const px = Number(P.x);
+    const qx = Number(Q.x);
+    const A = upper(P);
+    const B = upper(Q);
+    if (!A) return noColumn(P);
+    if (!B) return noColumn(Q);
+    g.A = A;
+    g.B = B;
+
+    if (px !== qx) {
+      g.kind = 'chord';
+      const hit = realChord(A, B);
+      g.S = hit.S;
+      g.R = hit.R;
+      g.line = { s: (B.y - A.y) / (B.x - A.x), x0: A.x, y0: A.y };
+      g.rlabel = 'R = P + Q';
+      return g;
+    }
+
+    /* Same column: the line through the two points is vertical. */
+    if (mod(P.y + Q.y, state.p) === 0n) {
+      g.kind = 'vertical';
+      g.B = { x: A.x, y: -A.y };
+      g.note = P.y === Q.y
+        ? 'P and Q are the same point with y = 0, so P is its own inverse: the tangent there is vertical and P + Q = ∞.'
+        : `P and Q share the column x = ${px} and are reflections of each other. The line through them is vertical, so its third intersection is the point at infinity: P + Q = ∞.`;
+      return g;
+    }
+
+    if (P.y === Q.y) {
+      /* P and Q are the same point: the crate panics, the geometry is the tangent. */
+      g.kind = 'tangent';
+      g.note = 'P and Q are the same point. The crate panics here — it refuses to add a point to itself — but the geometric picture of adding a point to itself is the tangent at P, drawn here.';
+      const hit = realTangent(A, a);
+      g.S = hit.S;
+      g.R = hit.R;
+      g.line = { s: ((3 * A.x * A.x) + a) / (2 * A.y), x0: A.x, y0: A.y };
+      g.rlabel = 'R = 2P';
+      return g;
+    }
+
+    g.kind = 'vertical';
+    g.B = { x: A.x, y: -A.y };
+    g.note = `P and Q share the column x = ${px} but are not reflections of each other — the crate divides by x₂ − x₁ = 0.`;
+    return g;
+  }
+
+  /** The note under the real curve: the same example, drawn over the reals. */
+  function realCaption(run, g) {
+    const a = Number(state.a);
+    const b = Number(state.b);
+    const p = Number(state.p);
+    const eq = `y² = x³ + ${a}x + ${b}`;
+    const field = run.panic ? 'the crate panics' : `<b>${ptText(run.result || IDENTITY)}</b>`;
+    const same = `Over F<sub>${p}</sub> the same example gives ${field}.`;
+    const heights = ' The heights here are the real roots, not the residues mod ' + p + '.';
+
+    if (g.kind === 'none') {
+      return `Real curve <code>${eq}</code>. ${g.note} There is nothing to draw over the reals.`;
+    }
+    if (g.kind === 'single' || g.kind === 'vertical') {
+      return `Real curve <code>${eq}</code>. ${g.note} ${same}`;
+    }
+    if (g.kind === 'ladder') {
+      const k = BigInt($('#kin').value || '0');
+      return `Real curve <code>${eq}</code>. The dashed path is the crate's double-and-add ladder for k = ${k} = ${k.toString(2)}₂: double the accumulator, then add P once more for every bit that is 1. ${same}${heights}`;
+    }
+    if (g.kind === 'tangent' && g.note) {
+      return `Real curve <code>${eq}</code>. ${g.note} ${same}`;
+    }
+    if (g.kind === 'tangent') {
+      return `Real curve <code>${eq}</code>. The tangent at <b>P</b> meets the curve again at <b>S</b>, and <b>R = 2P</b> is S reflected across the x-axis. ${same}${heights}`;
+    }
+    return `Real curve <code>${eq}</code>. The chord through <b>P</b> and <b>Q</b> meets the curve again at <b>S</b>, and <b>R = P + Q</b> is S reflected across the x-axis. ${same}${heights}`;
   }
 
   function renderRealCurve(run) {
@@ -521,36 +763,21 @@
     const plotW = W - pad * 2;
     const plotH = H - pad * 2;
 
-    const seed = findRealSeedX(a, b);
-    let x1 = seed + 0.35;
-    if (((x1 * x1 * x1) + (a * x1) + b) < 0) x1 = seed + 0.05;
-    let x2 = x1 + 1.5;
-    if (((x2 * x2 * x2) + (a * x2) + b) < 0) x2 = x1 + 0.3;
-    const y1 = Math.sqrt(Math.max(0, (x1 * x1 * x1) + (a * x1) + b));
-    const y2 = Math.sqrt(Math.max(0, (x2 * x2 * x2) + (a * x2) + b));
-    const A = { x: x1, y: y1 };
-    const Bp = { x: x2, y: y2 };
+    const g = realGeometry(run);
 
-    const doubling = run.mode !== 'add';
-    let s = doubling ? ((3 * x1 * x1) + a) / (2 * y1) : (y2 - y1) / (x2 - x1);
-    if (!Number.isFinite(s)) s = 0;
-    const x3 = (s * s) - x1 - (doubling ? x1 : x2);
-    const y3 = (s * (x1 - x3)) - y1;
-    const S = { x: x3, y: -y3 };
-    const R = { x: x3, y: y3 };
-
-    const xs = [x1, x2, x3];
-    let xLo = Math.min(...xs);
-    for (let k = 0; k < 160; k += 1) {
-      const test = xLo - 0.03;
-      if (((test * test * test) + (a * test) + b) < 0) break;
-      xLo = test;
+    const shown = [g.A, g.B, g.S, g.R].filter(Boolean).concat(g.ladder);
+    let xMin = 0;
+    let xMax = 1;
+    let yTop = 0.8;
+    for (const q of shown) {
+      xMin = Math.min(xMin, q.x);
+      xMax = Math.max(xMax, q.x);
+      yTop = Math.max(yTop, Math.abs(q.y));
     }
-    xLo -= 0.3;
-    const xHi = Math.max(...xs) + 1.4;
-    let yTop = Math.max(Math.abs(y1), Math.abs(y2), Math.abs(y3), 0.8);
-    const yEnd = realY(xHi, a, b);
-    if (yEnd !== null) yTop = Math.max(yTop, yEnd);
+
+    const start = findRealStartX(a, b);
+    const xLo = Math.min(xMin, start - 0.25);
+    const xHi = Math.max(xMax + 0.8, start + 1.2);
     const yMax = (yTop * 1.15) + 0.4;
 
     const X = (x) => pad + ((x - xLo) / (xHi - xLo)) * plotW;
@@ -561,16 +788,31 @@
 
     const xSpan = xHi - xLo;
     const ySpan = 2 * yMax;
-    const xStep = xSpan > 14 ? Math.ceil(xSpan / 9) : 1;
-    const yStep = ySpan > 14 ? Math.ceil(ySpan / 8) : 1;
-    for (let x = Math.ceil(xLo / xStep) * xStep; x <= xHi; x += xStep) {
+    const xTicks = ticksIn(xLo, xHi, niceStep(xSpan, 9));
+    const yTicks = ticksIn(-yMax, yMax, niceStep(ySpan, 8));
+    for (const x of xTicks) {
       out += `<line x1="${X(x)}" y1="${pad}" x2="${X(x)}" y2="${pad + plotH}" class="real-grid"/>`;
     }
-    for (let y = Math.ceil((-yMax) / yStep) * yStep; y <= yMax; y += yStep) {
+    for (const y of yTicks) {
       out += `<line x1="${pad}" y1="${Y(y)}" x2="${pad + plotW}" y2="${Y(y)}" class="real-grid"/>`;
     }
-    if (0 >= xLo && 0 <= xHi) out += `<line x1="${X(0)}" y1="${pad}" x2="${X(0)}" y2="${pad + plotH}" class="real-axis"/>`;
-    if (0 >= -yMax && 0 <= yMax) out += `<line x1="${pad}" y1="${Y(0)}" x2="${pad + plotW}" y2="${Y(0)}" class="real-axis"/>`;
+
+    /* the axes, with numbers — the same idea as the F_p grid */
+    const yZero = Y(0);
+    const xZero = X(0);
+    const hasYAxis = 0 >= xLo && 0 <= xHi;
+    if (hasYAxis) out += `<line x1="${xZero}" y1="${pad}" x2="${xZero}" y2="${pad + plotH}" class="real-zero"/>`;
+    out += `<line x1="${pad}" y1="${yZero}" x2="${pad + plotW}" y2="${yZero}" class="real-zero"/>`;
+    for (const x of xTicks) {
+      out += `<line x1="${X(x)}" y1="${yZero - 3}" x2="${X(x)}" y2="${yZero + 3}" class="real-tick"/>`;
+      out += `<text x="${X(x)}" y="${pad + plotH + 17}" text-anchor="middle" class="g-text">${fmtNum(x)}</text>`;
+    }
+    for (const y of yTicks) {
+      if (hasYAxis) out += `<line x1="${xZero - 3}" y1="${Y(y)}" x2="${xZero + 3}" y2="${Y(y)}" class="real-tick"/>`;
+      out += `<text x="${pad - 8}" y="${Y(y) + 4}" text-anchor="end" class="g-text">${fmtNum(y)}</text>`;
+    }
+    out += `<text x="${pad + plotW}" y="${pad - 11}" text-anchor="end" class="g-text">x →</text>`;
+    out += `<text x="${pad - 8}" y="${pad - 11}" text-anchor="start" class="g-text">y →</text>`;
 
     out += '<g clip-path="url(#realClip)">';
     const samples = [];
@@ -592,33 +834,47 @@
       out += `<path class="real-curve" d="${seg.map((q, i) => `${i ? 'L' : 'M'} ${X(q.x)} ${Y(q.y)}`).join(' ')}"/>`;
       out += `<path class="real-curve" d="${seg.map((q, i) => `${i ? 'L' : 'M'} ${X(q.x)} ${Y(-q.y)}`).join(' ')}"/>`;
     }
-    const ly1 = y1 + (s * (xLo - x1));
-    const ly2 = y1 + (s * (xHi - x1));
-    out += `<line x1="${X(xLo)}" y1="${Y(ly1)}" x2="${X(xHi)}" y2="${Y(ly2)}" class="real-line"/>`;
+    if (g.kind === 'vertical') {
+      const vx = X(g.A.x);
+      out += `<line x1="${vx}" y1="${pad}" x2="${vx}" y2="${pad + plotH}" class="real-line"/>`;
+    } else if (g.line) {
+      const ly1 = g.line.y0 + (g.line.s * (xLo - g.line.x0));
+      const ly2 = g.line.y0 + (g.line.s * (xHi - g.line.x0));
+      out += `<line x1="${X(xLo)}" y1="${Y(ly1)}" x2="${X(xHi)}" y2="${Y(ly2)}" class="real-line"/>`;
+    }
+    if (g.kind === 'ladder' && g.ladder.length > 1) {
+      out += `<polyline class="ladder-line" points="${g.ladder.map((q) => `${X(q.x)},${Y(q.y)}`).join(' ')}"/>`;
+      for (const q of g.ladder) out += `<circle cx="${X(q.x)}" cy="${Y(q.y)}" r="2.5" class="ladder-dot"/>`;
+    }
     out += '</g>';
 
     const r = 5.5;
     const label = (q, text, cls, dx, dy) => `<text x="${X(q.x) + dx}" y="${Y(q.y) + dy}" text-anchor="middle" class="real-label ${cls}">${text}</text>`;
+    const rBelow = g.S ? Y(g.R.y) > Y(g.S.y) : false;
 
-    out += `<circle cx="${X(S.x)}" cy="${Y(S.y)}" r="${r}" fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
-    const rBelow = Y(R.y) > Y(S.y);
-    out += label(S, 'S', 's', 0, rBelow ? -12 : 18);
-    out += `<circle cx="${X(R.x)}" cy="${Y(R.y)}" r="${r + 3}" class="mk-ring" stroke="var(--good)"/>`;
-    out += label(R, doubling ? 'R = 2A' : 'R = A + B', 'r', 0, rBelow ? 18 : -13);
-    out += `<circle cx="${X(A.x)}" cy="${Y(A.y)}" r="${r}" fill="var(--cyan)" stroke="var(--bg)" stroke-width="1.5"/>`;
-    out += label(A, 'A', 'a', -14, -5);
-    if (!doubling) {
-      out += `<circle cx="${X(Bp.x)}" cy="${Y(Bp.y)}" r="${r}" fill="var(--rose)" stroke="var(--bg)" stroke-width="1.5"/>`;
-      out += label(Bp, 'B', 'b', 14, -5);
+    if (g.A) {
+      out += `<circle cx="${X(g.A.x)}" cy="${Y(g.A.y)}" r="${r}" fill="var(--cyan)" stroke="var(--bg)" stroke-width="1.5"/>`;
+      out += label(g.A, 'P', 'a', -14, -5);
     }
-    out += `<text x="${pad + 8}" y="${pad + 16}" class="g-text">x →</text>`;
-    out += `<text x="${pad + 8}" y="${pad + 30}" class="g-text">y →</text>`;
+    if (g.B) {
+      out += `<circle cx="${X(g.B.x)}" cy="${Y(g.B.y)}" r="${r}" fill="var(--rose)" stroke="var(--bg)" stroke-width="1.5"/>`;
+      out += label(g.B, 'Q', 'b', 14, -5);
+    }
+    if (g.S) {
+      out += `<circle cx="${X(g.S.x)}" cy="${Y(g.S.y)}" r="${r}" fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5"/>`;
+      out += label(g.S, 'S', 's', 0, rBelow ? -12 : 18);
+    }
+    if (g.R) {
+      out += `<circle cx="${X(g.R.x)}" cy="${Y(g.R.y)}" r="${r + 3}" class="mk-ring" stroke="var(--good)"/>`;
+      out += label(g.R, g.rlabel, 'r', 0, rBelow ? 18 : -13);
+    }
+    if (g.kind === 'vertical') {
+      out += `<text x="${X(g.A.x)}" y="${pad + 18}" text-anchor="middle" class="real-label r">R = ∞</text>`;
+    }
+    out += `<text x="${pad + 8}" y="${pad + 16}" class="g-text">y² = x³ + ${a}x + ${b}</text>`;
 
     $('#realCurve').innerHTML = out;
-    const eq = `y² = x³ + ${a}x + ${b}`;
-    $('#realNote').innerHTML = doubling
-      ? `Real curve <code>${eq}</code>. The single line is the tangent at <b>A</b>. It meets the curve again at <b>S</b>, and <b>R</b> is S reflected across the x-axis. This panel uses real numbers, not the F<sub>p</sub> selection above.`
-      : `Real curve <code>${eq}</code>. The single line is the chord through <b>A</b> and <b>B</b>. It meets the curve again at <b>S</b>, and <b>R</b> is S reflected across the x-axis. This panel uses real numbers, not the F<sub>p</sub> selection above.`;
+    $('#realNote').innerHTML = realCaption(run, g);
   }
 
   /* ── rendering ─────────────────────────────────────────────────── */
